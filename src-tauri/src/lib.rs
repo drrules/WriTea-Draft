@@ -2,6 +2,8 @@ use std::sync::Mutex;
 
 /// Platform text-to-speech for Table Read (issue #131).
 mod tts;
+/// Serverless live co-editing sessions.
+mod live;
 use percent_encoding::percent_decode_str;
 use tauri::{Emitter, Manager};
 #[cfg(desktop)]
@@ -2872,6 +2874,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
+        .manage(live::LiveState::default())
         // ── Asset protocol: serve local files for convertFileSrc() URLs ──
         .register_uri_scheme_protocol("asset", |_app, request| {
             let uri = request.uri();
@@ -2902,6 +2905,12 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            live::live_host_prepare,
+            live::live_host_accept,
+            live::live_join_prepare,
+            live::live_join_connect,
+            live::live_send,
+            live::live_close,
             keep_original_copy,
             save_text_to_path,
             save_binary_to_path,

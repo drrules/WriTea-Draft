@@ -58,6 +58,10 @@ tauri-plugin-opener = "=2.5.2"
 tauri-plugin-clipboard-manager = "=2.3.3"
 reqwest = { version = "0.12", features = ["rustls-tls"], default-features = false }
 percent-encoding = "2"
+# Live co-editing sessions (src/live): serverless, relay-free direct connections.
+iroh = "=1.3.0"
+tokio = { version = "1", features = ["sync", "time", "rt"] }
+base64 = "0.22"
 
 [target.'cfg(target_os = "android")'.dependencies]
 jni = "0.21"
@@ -67,6 +71,9 @@ jni = "0.21"
 # Activity now come from tao's own per-activity registry via
 # `tauri::tao::platform::android::prelude::main_android_context()`, which
 # returns an Option rather than panicking. Do not add it back.
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 
 [profile.release]
 panic = "abort"
