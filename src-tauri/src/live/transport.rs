@@ -1,8 +1,10 @@
 //! Serverless live-session transport for WriTea Draft.
 //!
 //! Two people trade short "handshake codes". Each code carries the sender's
-//! public address (learned from a public STUN lookup) so both computers can
-//! send packets at each other at the same moment ("hole punching"). The
+//! addresses: the public one (learned from a public STUN lookup) and the one
+//! on the local network, so people on the same Wi-Fi connect without needing
+//! the router to loop packets back. Both computers keep sending small packets
+//! at each other's addresses until one answers ("hole punching"). The
 //! connection itself is QUIC through iroh with relays disabled: encrypted,
 //! mutually authenticated by public key, and carrying no data through anyone
 //! else's server.
@@ -12,7 +14,7 @@
 use iroh::endpoint::{RecvStream, SendStream};
 use iroh::{Endpoint, EndpointAddr, EndpointId, RelayMode, SecretKey, endpoint::presets};
 use std::net::{SocketAddr, ToSocketAddrs, UdpSocket};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 
 const ALPN: &[u8] = b"writea-draft/live/1";
@@ -20,6 +22,10 @@ const PREFERRED_PORT: u16 = 42200;
 const MAX_FRAME: usize = 32 * 1024 * 1024;
 const HELLO_OK: &[u8] = b"wt1-ok";
 const CODE_PREFIX: &str = "wt1";
+const PUNCH: &[u8] = b"punch";
+const PUNCH_INTERVAL: Duration = Duration::from_millis(400);
+/// More than this many addresses in a code is not a real code.
+const MAX_CANDIDATES: usize = 6;
 pub const DEFAULT_STUN: &[&str] = &[
     "stun.l.google.com:19302",
     "stun.cloudflare.com:3478",
@@ -47,7 +53,14 @@ pub struct Config {
     pub stun_servers: Vec<String>,
     /// Port to try first; falls back to any free port if taken.
     pub preferred_port: u16,
+    /// How long the guest tries once they press Connect.
     pub connect_timeout: Duration,
+    /// How long the host waits for the guest to press Connect (a person is
+    /// involved, so this is generous).
+    pub host_wait: Duration,
+    /// If the internet lookup fails but this computer has a local network
+    /// address, carry on with just that (works for people on the same Wi-Fi).
+    pub allow_lan_only: bool,
 }
 impl Default for Config {
     fn default() -> Self {
@@ -55,6 +68,8 @@ impl Default for Config {
             stun_servers: DEFAULT_STUN.iter().map(|s| s.to_string()).collect(),
             preferred_port: PREFERRED_PORT,
             connect_timeout: Duration::from_secs(30),
+            host_wait: Duration::from_secs(180),
+            allow_lan_only: true,
         }
     }
 }
@@ -88,7 +103,7 @@ fn stun_lookup(sock: &UdpSocket, servers: &[String]) -> Result<SocketAddr, LiveE
             }
         }
     }
-    err("Couldn't work out how to be reached from the internet. This network may be blocking the lookup (it uses UDP). Try a different network, or turn on \"Use relay if direct fails\" in Settings.")
+    err("Couldn't work out how to be reached from the internet. This network may be blocking the lookup (it uses UDP). Try a different network.")
 }
 
 fn parse_xor_mapped(buf: &[u8]) -> Option<SocketAddr> {
@@ -107,11 +122,86 @@ fn parse_xor_mapped(buf: &[u8]) -> Option<SocketAddr> {
     None
 }
 
-fn punch(sock: &UdpSocket, target: SocketAddr) {
-    for _ in 0..8 {
-        let _ = sock.send_to(b"punch", target);
-        std::thread::sleep(Duration::from_millis(150));
+/// This computer's address on the local network (the one it would use to reach
+/// the internet), if it has one. Nothing is sent: "connecting" a UDP socket
+/// only asks the system which address it would use.
+fn lan_ip() -> Option<std::net::Ipv4Addr> {
+    let s = UdpSocket::bind("0.0.0.0:0").ok()?;
+    s.connect("8.8.8.8:80").ok()?;
+    match s.local_addr().ok()? {
+        SocketAddr::V4(a) if !a.ip().is_unspecified() && !a.ip().is_loopback() => Some(*a.ip()),
+        _ => None,
     }
+}
+
+/// The addresses to put in our code: the public one (if we learned it) and the
+/// local network one.
+fn gather_candidates(public: Option<SocketAddr>, port: u16) -> Vec<SocketAddr> {
+    let mut v = Vec::new();
+    if let Some(p) = public {
+        v.push(p);
+    }
+    if let Some(ip) = lan_ip() {
+        let a = SocketAddr::from((ip, port));
+        if !v.contains(&a) {
+            v.push(a);
+        }
+    }
+    v
+}
+
+fn format_candidates(c: &[SocketAddr]) -> String {
+    c.iter().map(|a| a.to_string()).collect::<Vec<_>>().join(",")
+}
+
+/// Reads the address list out of a code, refusing anything that could not be a
+/// real peer (we send packets to these, so be strict).
+fn parse_candidates(s: &str, what: &str) -> Result<Vec<SocketAddr>, LiveError> {
+    let bad = || LiveError(format!("That {what} code doesn't look right."));
+    let mut out = Vec::new();
+    for part in s.split(',') {
+        let a: SocketAddr = part.parse().map_err(|_| bad())?;
+        let SocketAddr::V4(v4) = a else { return Err(bad()) };
+        if v4.port() == 0 || v4.ip().is_unspecified() || v4.ip().is_multicast() || v4.ip().is_broadcast() {
+            return Err(bad());
+        }
+        if !out.contains(&a) {
+            out.push(a);
+        }
+    }
+    if out.is_empty() || out.len() > MAX_CANDIDATES {
+        return Err(bad());
+    }
+    Ok(out)
+}
+
+/// Sends small packets at every address in `targets` until one of them answers,
+/// which means both routers now have an open path. Returns the address the
+/// answer came from, or None if nothing answered in time.
+fn punch_until_heard(sock: &UdpSocket, targets: &[SocketAddr], wait: Duration) -> Option<SocketAddr> {
+    let _ = sock.set_read_timeout(Some(PUNCH_INTERVAL));
+    let deadline = Instant::now() + wait;
+    let mut buf = [0u8; 64];
+    while Instant::now() < deadline {
+        for t in targets {
+            let _ = sock.send_to(PUNCH, t);
+        }
+        let listen_until = Instant::now() + PUNCH_INTERVAL;
+        while Instant::now() < listen_until {
+            let Ok((n, from)) = sock.recv_from(&mut buf) else { continue };
+            if &buf[..n] == PUNCH && targets.iter().any(|t| t.ip() == from.ip()) {
+                // Answer a few more times so the other side hears us too.
+                for _ in 0..4 {
+                    for t in targets {
+                        let _ = sock.send_to(PUNCH, t);
+                    }
+                    std::thread::sleep(Duration::from_millis(100));
+                }
+                return Some(from);
+            }
+        }
+    }
+    None
 }
 
 fn bind_discovery_socket(preferred: u16) -> Result<UdpSocket, LiveError> {
@@ -204,6 +294,14 @@ impl Closer {
     pub fn close(&self) {
         self.conn.close(0u32.into(), b"bye");
     }
+
+    /// Ends the session and waits (briefly) until the goodbye has actually
+    /// reached the other side. Dropping the connection without waiting leaves
+    /// the other person looking at a dead session for about a minute.
+    pub async fn close_and_wait(self) {
+        self.conn.close(0u32.into(), b"bye");
+        let _ = tokio::time::timeout(Duration::from_secs(3), self._endpoint.close()).await;
+    }
 }
 
 fn run_session(
@@ -260,14 +358,28 @@ pub struct HostPrep {
     cfg: Config,
 }
 
+/// Works out which addresses to offer. The public address needs the internet
+/// lookup; the local one does not.
+fn candidates_for_code(sock: &UdpSocket, cfg: &Config, port: u16) -> Result<Vec<SocketAddr>, LiveError> {
+    let public = stun_lookup(sock, &cfg.stun_servers);
+    if public.is_err() && !cfg.allow_lan_only {
+        return Err(public.unwrap_err());
+    }
+    let cands = gather_candidates(public.as_ref().ok().copied(), port);
+    if cands.is_empty() {
+        return Err(public.unwrap_err());
+    }
+    Ok(cands)
+}
+
 pub async fn host_prepare(cfg: Config) -> Result<HostPrep, LiveError> {
     tokio::task::spawn_blocking(move || {
         let sock = bind_discovery_socket(cfg.preferred_port)?;
         let port = sock.local_addr().map_err(e("socket"))?.port();
-        let public = stun_lookup(&sock, &cfg.stun_servers)?;
+        let cands = candidates_for_code(&sock, &cfg, port)?;
         let key = SecretKey::generate();
         let secret: String = (0..8).map(|_| format!("{:02x}", SecretKey::generate().to_bytes()[0])).collect();
-        let code = format!("{CODE_PREFIX}/{}/{}/{}", key.public(), public, secret);
+        let code = format!("{CODE_PREFIX}/{}/{}/{}", key.public(), format_candidates(&cands), secret);
         Ok(HostPrep { code, sock, key, secret, port, cfg })
     })
     .await
@@ -277,14 +389,20 @@ pub async fn host_prepare(cfg: Config) -> Result<HostPrep, LiveError> {
 pub async fn host_accept(prep: HostPrep, guest_code: &str) -> Result<Session, LiveError> {
     let p = parse_code(guest_code, 2)?;
     let gid: EndpointId = p[0].parse().map_err(|_| LiveError("That guest code doesn't look right.".into()))?;
-    let gaddr: SocketAddr = p[1].parse().map_err(|_| LiveError("That guest code doesn't look right.".into()))?;
+    let gcands = parse_candidates(&p[1], "guest")?;
     let HostPrep { sock, key, secret, port, cfg, .. } = prep;
-    tokio::task::spawn_blocking(move || {
-        punch(&sock, gaddr);
+    let host_wait = cfg.host_wait;
+    // Keep knocking until the guest answers (they may take a while to press Connect).
+    let heard = tokio::task::spawn_blocking(move || {
+        let heard = punch_until_heard(&sock, &gcands, host_wait);
         drop(sock);
+        heard
     })
     .await
     .map_err(e("internal"))?;
+    if heard.is_none() {
+        return Err(no_direct_path());
+    }
     let ep = make_endpoint(key, port).await?;
     let wait = async {
         loop {
@@ -318,7 +436,7 @@ pub struct JoinPrep {
     sock: UdpSocket,
     key: SecretKey,
     hid: EndpointId,
-    haddr: SocketAddr,
+    hcands: Vec<SocketAddr>,
     secret: String,
     port: u16,
     cfg: Config,
@@ -328,30 +446,38 @@ pub async fn join_prepare(cfg: Config, host_code: &str) -> Result<JoinPrep, Live
     let p = parse_code(host_code, 3)?;
     let bad = || LiveError("That host code doesn't look right.".into());
     let hid: EndpointId = p[0].parse().map_err(|_| bad())?;
-    let haddr: SocketAddr = p[1].parse().map_err(|_| bad())?;
+    let hcands = parse_candidates(&p[1], "host")?;
     let secret = p[2].clone();
     tokio::task::spawn_blocking(move || {
         let sock = bind_discovery_socket(cfg.preferred_port)?;
         let port = sock.local_addr().map_err(e("socket"))?.port();
-        let public = stun_lookup(&sock, &cfg.stun_servers)?;
+        let cands = candidates_for_code(&sock, &cfg, port)?;
         let key = SecretKey::generate();
-        let code = format!("{CODE_PREFIX}/{}/{}", key.public(), public);
-        Ok(JoinPrep { code, sock, key, hid, haddr, secret, port, cfg })
+        let code = format!("{CODE_PREFIX}/{}/{}", key.public(), format_candidates(&cands));
+        Ok(JoinPrep { code, sock, key, hid, hcands, secret, port, cfg })
     })
     .await
     .map_err(e("internal"))?
 }
 
 pub async fn join_connect(prep: JoinPrep) -> Result<Session, LiveError> {
-    let JoinPrep { sock, key, hid, haddr, secret, port, cfg, .. } = prep;
-    tokio::task::spawn_blocking(move || {
-        punch(&sock, haddr);
+    let JoinPrep { sock, key, hid, hcands, secret, port, cfg, .. } = prep;
+    let wait = cfg.connect_timeout;
+    let targets = hcands.clone();
+    let heard = tokio::task::spawn_blocking(move || {
+        let heard = punch_until_heard(&sock, &targets, wait);
         drop(sock);
+        heard
     })
     .await
     .map_err(e("internal"))?;
+    let Some(from) = heard else { return Err(no_direct_path()) };
     let ep = make_endpoint(key, port).await?;
-    let dial = EndpointAddr::new(hid).with_ip_addr(haddr);
+    // Offer every address from the code, plus the one the host answered from.
+    let mut dial = EndpointAddr::new(hid);
+    for a in hcands.iter().chain(std::iter::once(&from)) {
+        dial = dial.with_ip_addr(*a);
+    }
     let conn = tokio::time::timeout(cfg.connect_timeout, ep.connect(dial, ALPN))
         .await
         .map_err(|_| no_direct_path())?
@@ -366,7 +492,7 @@ pub async fn join_connect(prep: JoinPrep) -> Result<Session, LiveError> {
 }
 
 fn no_direct_path() -> LiveError {
-    LiveError("Couldn't reach them directly. One of your networks may be blocking direct connections (some work, school and phone networks do). Try again on a different network, or turn on \"Use relay if direct fails\" in Settings.".into())
+    LiveError("Couldn't connect directly. Make sure you both pressed Connect; some work, school and phone networks also block direct connections.".into())
 }
 
 #[cfg(test)]
@@ -398,7 +524,13 @@ mod tests {
     }
 
     fn cfg(stun: &str, port: u16) -> Config {
-        Config { stun_servers: vec![stun.to_string()], preferred_port: port, connect_timeout: Duration::from_secs(10) }
+        Config {
+            stun_servers: vec![stun.to_string()],
+            preferred_port: port,
+            connect_timeout: Duration::from_secs(10),
+            host_wait: Duration::from_secs(20),
+            allow_lan_only: false,
+        }
     }
 
     #[tokio::test(flavor = "multi_thread")]
@@ -449,6 +581,133 @@ mod tests {
     #[tokio::test(flavor = "multi_thread")]
     async fn no_stun_gives_plain_message() {
         let r = host_prepare(cfg("127.0.0.1:9", 0)).await;
-        assert!(r.err().unwrap().0.contains("blocking the lookup"));
+        let msg = r.err().unwrap().0;
+        assert!(msg.contains("blocking the lookup"));
+        assert!(!msg.contains("relay"), "must not mention a setting that does not exist");
+    }
+
+    #[test]
+    fn candidate_lists_are_checked_strictly() {
+        assert_eq!(parse_candidates("203.0.113.9:4000,192.168.1.5:42200", "host").unwrap().len(), 2);
+        assert_eq!(parse_candidates("1.2.3.4:5,1.2.3.4:5", "host").unwrap().len(), 1); // duplicates collapse
+        for bad in [
+            "",
+            "nonsense",
+            "1.2.3.4",
+            "1.2.3.4:0",
+            "0.0.0.0:80",
+            "224.0.0.1:80",
+            "255.255.255.255:80",
+            "[::1]:80",
+            "1.1.1.1:1,1.1.1.2:1,1.1.1.3:1,1.1.1.4:1,1.1.1.5:1,1.1.1.6:1,1.1.1.7:1",
+        ] {
+            assert!(parse_candidates(bad, "host").is_err(), "{bad:?} should be refused");
+        }
+    }
+
+    #[test]
+    fn punching_hears_a_peer_that_starts_late() {
+        let a = Std::bind("127.0.0.1:0").unwrap();
+        let b = Std::bind("127.0.0.1:0").unwrap();
+        let (aa, ba) = (a.local_addr().unwrap(), b.local_addr().unwrap());
+        let ta = std::thread::spawn(move || punch_until_heard(&a, &[ba], Duration::from_secs(10)));
+        std::thread::sleep(Duration::from_millis(1500)); // b starts well after a
+        let tb = std::thread::spawn(move || punch_until_heard(&b, &[aa], Duration::from_secs(10)));
+        assert_eq!(ta.join().unwrap(), Some(ba));
+        assert_eq!(tb.join().unwrap(), Some(aa));
+    }
+
+    #[test]
+    fn punching_gives_up_quietly() {
+        let a = Std::bind("127.0.0.1:0").unwrap();
+        let silent = Std::bind("127.0.0.1:0").unwrap(); // never answers
+        let t0 = Instant::now();
+        let r = punch_until_heard(&a, &[silent.local_addr().unwrap()], Duration::from_millis(900));
+        assert_eq!(r, None);
+        assert!(t0.elapsed() < Duration::from_secs(3));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_guest_who_connects_much_later_still_gets_in() {
+        let stun = fake_stun();
+        let hp = host_prepare(cfg(&stun, 0)).await.unwrap();
+        let host_code = hp.code.clone();
+        let jp = join_prepare(cfg(&stun, 0), &host_code).await.unwrap();
+        let guest_code = jp.code.clone();
+        let host = tokio::spawn(async move { host_accept(hp, &guest_code).await });
+        tokio::time::sleep(Duration::from_secs(4)).await; // a person is slow to press Connect
+        let guest = join_connect(jp).await.unwrap();
+        let host = host.await.unwrap().unwrap();
+        drop(guest);
+        drop(host);
+    }
+
+    /// Puts an address that goes nowhere at the front of a code's address list.
+    fn with_dead_address_first(code: &str) -> String {
+        let mut parts: Vec<String> = code.split('/').map(|s| s.to_string()).collect();
+        parts[2] = format!("203.0.113.9:4000,{}", parts[2]);
+        parts.join("/")
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_dead_address_in_the_list_does_not_block_a_live_one() {
+        let stun = fake_stun();
+        let hp = host_prepare(cfg(&stun, 0)).await.unwrap();
+        let host_code = with_dead_address_first(&hp.code);
+        let jp = join_prepare(cfg(&stun, 0), &host_code).await.unwrap();
+        let guest_code = with_dead_address_first(&jp.code);
+        let host = tokio::spawn(async move { host_accept(hp, &guest_code).await });
+        let guest = join_connect(jp).await.unwrap();
+        let mut host = host.await.unwrap().unwrap();
+        guest.outgoing.send(b"ping".to_vec()).unwrap();
+        assert_eq!(host.incoming.recv().await.unwrap(), b"ping");
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn without_the_internet_lookup_the_local_address_still_works() {
+        let Some(ip) = lan_ip() else {
+            eprintln!("(no local network address on this machine; skipped)");
+            return;
+        };
+        let mut c = cfg("127.0.0.1:9", 0);
+        c.allow_lan_only = true;
+        let hp = host_prepare(c).await.unwrap();
+        assert!(hp.code.contains(&ip.to_string()), "code should carry the local address: {}", hp.code);
+    }
+
+    async fn connected_pair() -> (Session, Session) {
+        let stun = fake_stun();
+        let hp = host_prepare(cfg(&stun, 0)).await.unwrap();
+        let host_code = hp.code.clone();
+        let jp = join_prepare(cfg(&stun, 0), &host_code).await.unwrap();
+        let guest_code = jp.code.clone();
+        let host = tokio::spawn(async move { host_accept(hp, &guest_code).await });
+        let guest = join_connect(jp).await.unwrap();
+        (host.await.unwrap().unwrap(), guest)
+    }
+
+    /// The way the app ends a session: only the closer is left holding the connection.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn ending_a_session_reaches_the_other_side_quickly() {
+        let (h, g) = connected_pair().await;
+        let (_ho, _hi, _hclosed, hc) = h.into_parts();
+        let (_go, _gi, gclosed, _gc) = g.into_parts();
+        let t0 = Instant::now();
+        hc.close_and_wait().await;
+        let reason = tokio::time::timeout(Duration::from_secs(5), gclosed).await.expect("peer should notice within 5s").unwrap();
+        assert!(!reason.is_empty());
+        assert!(t0.elapsed() < Duration::from_secs(5), "took {:?}", t0.elapsed());
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_host_gives_up_with_a_plain_message_if_nobody_answers() {
+        let stun = fake_stun();
+        let mut c = cfg(&stun, 0);
+        c.host_wait = Duration::from_secs(2);
+        let hp = host_prepare(c).await.unwrap();
+        let nobody = Std::bind("127.0.0.1:0").unwrap();
+        let fake_guest = format!("{CODE_PREFIX}/{}/{}", SecretKey::generate().public(), nobody.local_addr().unwrap());
+        let r = host_accept(hp, &fake_guest).await;
+        assert!(r.err().unwrap().0.contains("Couldn't connect directly"));
     }
 }

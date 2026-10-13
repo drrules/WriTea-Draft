@@ -28,13 +28,22 @@ struct Inner {
 }
 
 impl Inner {
-    fn reset(&mut self) {
-        if let Some(c) = self.closer.take() {
-            c.close();
-        }
+    /// Forgets everything and hands back the live connection (if any), so the
+    /// caller can close it properly.
+    fn take_all(&mut self) -> Option<Closer> {
         self.host = None;
         self.join = None;
         self.outgoing = None;
+        self.closer.take()
+    }
+}
+
+/// Ends any current session and waits for the goodbye to reach the other side.
+/// Without the wait, the other person would see a dead session for ~30 seconds.
+async fn end_current(state: &LiveState) {
+    let old = state.inner.lock().await.take_all();
+    if let Some(c) = old {
+        c.close_and_wait().await;
     }
 }
 
@@ -58,7 +67,7 @@ async fn attach(app: AppHandle, state: &LiveState, session: Session) {
 /// Host, step 1: returns the code to send ("Reach out with this code").
 #[tauri::command]
 pub async fn live_host_prepare(state: State<'_, LiveState>) -> Result<String, String> {
-    state.inner.lock().await.reset();
+    end_current(&state).await;
     let prep = transport::host_prepare(Config::default()).await.map_err(|e| e.0)?;
     let code = prep.code.clone();
     state.inner.lock().await.host = Some(prep);
@@ -90,7 +99,7 @@ pub async fn live_join_prepare(
     state: State<'_, LiveState>,
     host_code: String,
 ) -> Result<String, String> {
-    state.inner.lock().await.reset();
+    end_current(&state).await;
     let prep = transport::join_prepare(Config::default(), &host_code)
         .await
         .map_err(|e| e.0)?;
@@ -128,6 +137,6 @@ pub async fn live_send(state: State<'_, LiveState>, data: String) -> Result<(), 
 /// Ends the session (or cancels a half-finished handshake).
 #[tauri::command]
 pub async fn live_close(state: State<'_, LiveState>) -> Result<(), String> {
-    state.inner.lock().await.reset();
+    end_current(&state).await;
     Ok(())
 }

@@ -68,6 +68,10 @@ const LiveSessionDialog: React.FC<LiveSessionDialogProps> = ({ role, begin, onCo
   const myCodeRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
+    // Development builds run this setup, then the cleanup below, then the setup
+    // again. Without resetting the flag here, that first cleanup would leave the
+    // dialog believing it had been closed, and it would ignore every answer.
+    cancelledRef.current = false;
     nameRef.current?.focus();
     return () => {
       cancelledRef.current = true;
