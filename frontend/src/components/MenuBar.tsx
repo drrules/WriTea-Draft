@@ -207,6 +207,11 @@ interface MenuBarProps {
   editor: Editor | null;
   onCollaborate?: () => void;
   onJoinCollab?: () => void;
+  /** Serverless live co-editing (File ▸ Live Co-editing). */
+  onLiveHost?: () => void;
+  onLiveJoin?: () => void;
+  onLiveEnd?: () => void;
+  liveActive?: boolean;
   isCollabActive?: boolean;
   isCollabGuest?: boolean;
   /**
@@ -255,6 +260,10 @@ const MenuBar: React.FC<MenuBarProps> = ({
   editor,
   isCollabGuest,
   onDocumentSaved,
+  onLiveHost,
+  onLiveJoin,
+  onLiveEnd,
+  liveActive,
 }) => {
   const navigate = useNavigate();
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
@@ -2465,6 +2474,21 @@ const MenuBar: React.FC<MenuBarProps> = ({
         // where anyone looks for it — the writer who wants the title page kept
         // out of a PDF is the writer already looking at their title page.
         { icon: <FaPrint />, label: 'Print…', shortcut: `${mod}P`, action: () => { void handlePrint(); } },
+        { separator: true, label: '' },
+        {
+          icon: <FaUsers />,
+          label: 'Live Co-editing',
+          children: liveActive
+            ? [
+                { icon: <FaUsers />, label: 'End Live Session', action: () => onLiveEnd?.() },
+              ]
+            : [
+                { icon: <FaUsers />, label: 'Start a Live Session…', action: () => onLiveHost?.() },
+                // Joining replaces what is open, so it goes through the same
+                // unsaved-changes prompt as opening a file.
+                { icon: <FaUsers />, label: 'Join a Live Session…', action: () => confirmOrRun(() => onLiveJoin?.()) },
+              ],
+        },
       ],
     },
     {

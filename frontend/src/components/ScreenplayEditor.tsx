@@ -176,6 +176,10 @@ import { useIsTouchDevice, useSwipeEdge, usePinchZoom } from '../hooks/useTouch'
 import { useSettingsStore } from '../stores/settingsStore';
 import { useLinkedFileStore, autoSaveAppliesToOpenDocument } from '../stores/linkedFileStore';
 import { startCollabSync, stopCollabSync } from '../services/collabSync';
+import { LiveProvider } from '../services/liveProvider';
+import LiveSessionDialog from './LiveSessionDialog';
+import { prosemirrorJSONToYXmlFragment } from 'y-prosemirror';
+import type { JSONContent as LiveJSONContent } from '@tiptap/core';
 import { collabAuthApi, setLogoutCollabTeardown, setLogoutEditorReset, isCollabAuthenticated } from '../services/collabAuth';
 import { platformFetch, isTauri, isDesktopTauri, needsSelectionHandles } from '../services/platform';
 import { reportSaveError } from '../stores/saveErrorStore';
@@ -241,6 +245,10 @@ const COLLAB_COLORS = [
 function randomCollabColor() {
   return COLLAB_COLORS[Math.floor(Math.random() * COLLAB_COLORS.length)];
 }
+// Live sessions have exactly two roles, so each gets its own fixed colour
+// (two random picks could land on the same one).
+const LIVE_HOST_COLOR = '#DC2626';
+const LIVE_GUEST_COLOR = '#2563EB';
 
 // Default next element type when pressing Enter
 const DEFAULT_NEXT_TYPE: Record<string, string> = {
@@ -427,7 +435,14 @@ const ScreenplayEditor: React.FC = () => {
   const [collabLoginOpen, setCollabLoginOpen] = useState(false);
   const [joinCollabOpen, setJoinCollabOpen] = useState(false);
   const [collabUsers, setCollabUsers] = useState<{ name: string; color: string }[]>([]);
-  const collabColor = useMemo(() => randomCollabColor(), []);
+  const [collabColor, setCollabColor] = useState(() => randomCollabColor());
+  // ── Serverless live sessions (File ▸ Live Co-editing) ──
+  const [liveMode, setLiveMode] = useState(false);
+  const [liveDialog, setLiveDialog] = useState<'host' | 'join' | null>(null);
+  const liveProviderRef = useRef<LiveProvider | null>(null);
+  const liveActiveRef = useRef(false);
+  const liveRestoreRef = useRef<LiveJSONContent | null>(null);
+  const endLiveRef = useRef<(message?: string) => void>(() => {});
   const [collabConnectionState, setCollabConnectionState] = useState<'connecting' | 'connected' | 'synced' | 'disconnected'>('connecting');
   // ── Collaboration activity log ──
   const [collabActivityLog, setCollabActivityLog] = useState<{ time: Date; message: string }[]>([]);
@@ -490,6 +505,10 @@ const ScreenplayEditor: React.FC = () => {
   // Cleanup collab provider
   const destroyCollab = useCallback(() => {
     stopCollabSync();
+    if (liveProviderRef.current) {
+      void liveProviderRef.current.close();
+      liveProviderRef.current = null;
+    }
     collabDocNameRef.current = null;
     if (providerRef.current) {
       providerRef.current.destroy();
@@ -689,6 +708,89 @@ const ScreenplayEditor: React.FC = () => {
     // Start syncing metadata (characters, notes, tags, beats) via Yjs
     startCollabSync(ydoc, isHost);
   }, [destroyCollab]);
+
+  // ── Serverless live sessions ──────────────────────────────────────────
+  // The dialog makes the connection first (host: the script is already in the
+  // shared document; guest: the script has arrived). Only then does the editor
+  // switch to collaboration mode, so neither editor ever seeds the document.
+  const endLive = useCallback((message?: string) => {
+    const wasActive = liveActiveRef.current;
+    const ed = collabEditorRef.current;
+    // Whoever leaves keeps a copy of the script as it stands.
+    liveRestoreRef.current = wasActive && ed && !ed.isDestroyed ? ed.getJSON() : null;
+    liveActiveRef.current = false;
+    destroyCollab();
+    setLiveDialog(null);
+    if (wasActive) {
+      setCollabMode(false);
+      setLiveMode(false);
+      setIsCollabHost(false);
+      setCollabRole('editor');
+      setEditorKey((k) => k + 1);
+    }
+    if (message) showToast(message, 'info');
+  }, [destroyCollab]);
+  endLiveRef.current = endLive;
+
+  const handleStopLive = useCallback(() => {
+    endLive('Live session ended');
+  }, [endLive]);
+
+  const beginLive = useCallback((role: 'host' | 'join', name: string): LiveProvider => {
+    destroyCollab(); // clears any earlier, abandoned attempt
+    const isHost = role === 'host';
+    const ydoc = new Y.Doc();
+    if (isHost) {
+      const ed = collabEditorRef.current;
+      if (!ed || ed.isDestroyed) throw new Error('The editor is not ready yet.');
+      // The host's script goes into the shared document up front.
+      prosemirrorJSONToYXmlFragment(ed.schema, ed.getJSON(), ydoc.getXmlFragment('default'));
+    }
+    const provider = new LiveProvider(ydoc, {
+      onStatus: (s) => setCollabConnectionState(s),
+      onPeers: (users) => {
+        setCollabUsers((prev) => {
+          const before = new Set(prev.map((u) => u.name));
+          const now = new Set(users.map((u) => u.name));
+          for (const u of users) if (!before.has(u.name)) addCollabActivity(`${u.name} joined the session`);
+          for (const u of prev) if (!now.has(u.name)) addCollabActivity(`${u.name} left the session`);
+          return users;
+        });
+      },
+      onClosed: (reason) => endLiveRef.current(reason),
+    });
+    ydocRef.current = ydoc;
+    liveProviderRef.current = provider;
+    setCollabUserName(name);
+    setCollabColor(isHost ? LIVE_HOST_COLOR : LIVE_GUEST_COLOR);
+    setCollabConnectionState('connecting');
+    setCollabActivityLog([]);
+    addCollabActivity('Starting live session');
+    // Host: puts notes, tags, beats etc. into the shared document now.
+    // Guest: picks them up as soon as they arrive.
+    startCollabSync(ydoc, isHost);
+    return provider;
+  }, [destroyCollab, addCollabActivity]);
+
+  const finishLive = useCallback((role: 'host' | 'join') => {
+    if (role === 'join') {
+      // The guest's editor now shows the host's script. Cut every link to
+      // whatever was open before, so nothing can save over it.
+      useEditorStore.getState().setDocumentOrigin(null);
+      useEditorStore.getState().setImportedSource(null);
+      setCurrentProject(null);
+      setCurrentScriptId(null);
+      setDocumentTitle('Untitled Screenplay');
+    }
+    liveActiveRef.current = true;
+    setIsCollabHost(role === 'host');
+    setCollabRole('editor');
+    setLiveMode(true);
+    setCollabMode(true);
+    setEditorKey((k) => k + 1);
+    setLiveDialog(null);
+    addCollabActivity(role === 'host' ? 'Your partner connected' : 'Connected to the host');
+  }, [addCollabActivity, setCurrentProject, setCurrentScriptId, setDocumentTitle]);
 
   // Called when host broadcasts document-switch — guest auto-follows
   const handleDocumentSwitch = useCallback(async (projectId: string, scriptId: string, sharedToken: string) => {
@@ -1678,7 +1780,8 @@ const ScreenplayEditor: React.FC = () => {
 
   // Build collaboration extensions when in collab mode
   const collabExtensions = useMemo(() => {
-    if (!collabMode || !ydocRef.current || !providerRef.current) {
+    const provider = providerRef.current ?? liveProviderRef.current;
+    if (!collabMode || !ydocRef.current || !provider) {
       return [];
     }
     return [
@@ -1686,7 +1789,7 @@ const ScreenplayEditor: React.FC = () => {
         document: ydocRef.current,
       }),
       CollaborationCursor.configure({
-        provider: providerRef.current,
+        provider,
         user: { name: collabUserName, color: collabColor },
       }),
     ];
@@ -1789,6 +1892,18 @@ const ScreenplayEditor: React.FC = () => {
 
   // Keep editor ref updated for onSynced callback
   collabEditorRef.current = editor;
+
+  // When a live session ends, put the script back into the plain editor so
+  // whoever leaves keeps a copy.
+  useEffect(() => {
+    if (!editor || editor.isDestroyed || collabMode) return;
+    const saved = liveRestoreRef.current;
+    if (!saved) return;
+    // The old editor is still bound to the shared document; wait for the new one.
+    if (editor.extensionManager.extensions.some((ext) => ext.name === 'collaboration')) return;
+    liveRestoreRef.current = null;
+    editor.commands.setContent(saved, true);
+  }, [editor, collabMode]);
 
   // Route native undo/redo (e.g. iOS shake-to-undo) to the editor
   useEffect(() => {
@@ -3279,7 +3394,7 @@ const ScreenplayEditor: React.FC = () => {
     if (loadedScriptRef.current === loadKey) return;
 
     // Host switching documents during collab — redirect through switchCollabDocument
-    if (collabMode && isCollabHost && !isHistoryMode) {
+    if (collabMode && isCollabHost && !liveMode && !isHistoryMode) {
       const isNewScript = currentScriptId && currentScriptId !== urlScriptId;
       if (isNewScript) {
         loadedScriptRef.current = loadKey;
@@ -3518,7 +3633,7 @@ const ScreenplayEditor: React.FC = () => {
         scriptSwitchingRef.current = false;
       }
     })();
-  }, [editor, urlProjectId, urlScriptId, urlCommitHash, isHistoryMode, collabMode, collabUserName, currentScriptId, switchCollabDocument, setCurrentProject, setCurrentScriptId, setDocumentTitle, updateScenes, scriptReloadKey, navigate, buildSaveContent]);
+  }, [editor, urlProjectId, urlScriptId, urlCommitHash, isHistoryMode, collabMode, liveMode, collabUserName, currentScriptId, switchCollabDocument, setCurrentProject, setCurrentScriptId, setDocumentTitle, updateScenes, scriptReloadKey, navigate, buildSaveContent]);
 
   // --- Sync orphaned marks: runs ONCE after editor is ready, not on every doc change ---
   const orphanSyncDone = useRef(false);
@@ -3830,7 +3945,7 @@ const ScreenplayEditor: React.FC = () => {
       if (source === 'cloud') markCloudScript(projectId, scriptId);
 
       // Host switching documents during collab
-      if (collabMode && isCollabHost) {
+      if (collabMode && isCollabHost && !liveMode) {
         await switchCollabDocument(projectId, scriptId);
         return;
       }
@@ -4002,7 +4117,7 @@ const ScreenplayEditor: React.FC = () => {
         scriptSwitchingRef.current = false;
       }
     },
-    [editor, collabMode, collabUserName, switchCollabDocument, setCurrentProject, setCurrentScriptId, setDocumentTitle, updateScenes, currentProject, currentScriptId, buildSaveContent, markCloudScript],
+    [editor, collabMode, liveMode, collabUserName, switchCollabDocument, setCurrentProject, setCurrentScriptId, setDocumentTitle, updateScenes, currentProject, currentScriptId, buildSaveContent, markCloudScript],
   );
 
   /**
@@ -4896,7 +5011,7 @@ const ScreenplayEditor: React.FC = () => {
               </span>
             ))}
           </div>
-          {isCollabHost && (
+          {isCollabHost && !liveMode && (
             <button className="collab-banner-btn" onClick={() => {
               // Close any stale login dialog before reopening share dialog
               setCollabLoginOpen(false);
@@ -4932,7 +5047,7 @@ const ScreenplayEditor: React.FC = () => {
               </div>
             )}
           </div>
-          <button className="collab-banner-btn collab-banner-btn-stop" onClick={handleStopCollab}>
+          <button className="collab-banner-btn collab-banner-btn-stop" onClick={liveMode ? handleStopLive : handleStopCollab}>
             {isCollabHost ? 'End Session' : 'Disconnect'}
           </button>
         </div>
@@ -4998,6 +5113,14 @@ const ScreenplayEditor: React.FC = () => {
           </button>
         </div>
       )}
+      {liveDialog && (
+        <LiveSessionDialog
+          role={liveDialog}
+          begin={beginLive}
+          onConnected={finishLive}
+          onCancel={() => endLive()}
+        />
+      )}
       {!isHistoryMode && <MenuBar editor={editor} onDocumentSaved={(json) => { lastSavedJsonRef.current = json; }} onCollaborate={() => {
         if (!currentProject || !currentScriptId) {
           showToast('Save your screenplay to a project first — opening Save As...', 'info');
@@ -5010,7 +5133,7 @@ const ScreenplayEditor: React.FC = () => {
           return;
         }
         setShareDialogOpen(true);
-      }} onJoinCollab={() => setJoinCollabOpen(true)} isCollabActive={collabMode} isCollabGuest={collabMode && !isCollabHost} />}
+      }} onJoinCollab={() => setJoinCollabOpen(true)} onLiveHost={() => setLiveDialog('host')} onLiveJoin={() => setLiveDialog('join')} onLiveEnd={handleStopLive} liveActive={liveMode} isCollabActive={collabMode} isCollabGuest={collabMode && !isCollabHost} />}
       {!isHistoryMode && <Toolbar editor={editor} />}
       <div className="editor-layout">
         {!isHistoryMode && <SceneNavigator editor={editor} scrollContainer={editorMainRef.current} style={{ width: navWidth, minWidth: navWidth }} />}

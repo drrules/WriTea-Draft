@@ -22,23 +22,24 @@ vi.mock('@tauri-apps/api/event', () => ({
 
 import { LiveProvider, tauriBridge, type LiveBridge, type LiveUser } from './liveProvider';
 
-const tick = () => new Promise((r) => setTimeout(r, 5));
+const tick = () => new Promise((r) => setTimeout(r, 30));
+
+interface Side {
+  msg: null | ((d: Uint8Array) => void);
+  closed: null | ((r: string) => void);
+  peer: Side | null;
+  sent: number;
+}
 
 /** Two bridges wired back to back, delivering asynchronously like real events. */
 function linkedBridges() {
   const mk = () => {
-    const state = {
-      msg: null as null | ((d: Uint8Array) => void),
-      closed: null as null | ((r: string) => void),
-      peer: null as any,
-      pending: [] as Uint8Array[],
-      sent: 0,
-    };
+    const state: Side = { msg: null, closed: null, peer: null, sent: 0 };
     const bridge: LiveBridge = {
       async send(d) {
         state.sent++;
         const copy = d.slice();
-        setTimeout(() => state.peer.deliver(copy), 0);
+        setTimeout(() => state.peer?.msg?.(copy), 0);
       },
       async onMessage(cb) {
         state.msg = cb;
@@ -53,15 +54,15 @@ function linkedBridges() {
         };
       },
       async close() {
-        setTimeout(() => state.peer.closed?.('The other person left.'), 0);
+        setTimeout(() => state.peer?.closed?.('The other person left.'), 0);
       },
     };
-    return { bridge, state, deliver: (d: Uint8Array) => state.msg?.(d) };
+    return { bridge, state };
   };
   const a = mk();
   const b = mk();
-  (a.state as any).peer = { deliver: b.deliver, get closed() { return b.state.closed; } };
-  (b.state as any).peer = { deliver: a.deliver, get closed() { return a.state.closed; } };
+  a.state.peer = b.state;
+  b.state.peer = a.state;
   return { a, b };
 }
 
@@ -73,6 +74,7 @@ function setup() {
   const guestStatus: string[] = [];
   const hostPeers: LiveUser[][] = [];
   const guestClosed: string[] = [];
+  const guestPeers: LiveUser[][] = [];
   const host = new LiveProvider(hostDoc, {
     bridge: a.bridge,
     onStatus: (s) => hostStatus.push(s),
@@ -81,9 +83,10 @@ function setup() {
   const guest = new LiveProvider(guestDoc, {
     bridge: b.bridge,
     onStatus: (s) => guestStatus.push(s),
+    onPeers: (u) => guestPeers.push(u),
     onClosed: (r) => guestClosed.push(r),
   });
-  return { host, guest, hostDoc, guestDoc, hostStatus, guestStatus, hostPeers, guestClosed, a, b };
+  return { host, guest, hostDoc, guestDoc, hostStatus, guestStatus, hostPeers, guestPeers, guestClosed, a, b };
 }
 
 describe('LiveProvider', () => {
@@ -91,7 +94,7 @@ describe('LiveProvider', () => {
     const t = setup();
     t.hostDoc.getText('t').insert(0, 'INT. KITCHEN - DAY');
     await Promise.all([t.host.connect(async () => {}), t.guest.connect(async () => {})]);
-    await tick();
+    await Promise.all([t.host.whenSynced(2000), t.guest.whenSynced(2000)]);
     expect(t.guestDoc.getText('t').toString()).toBe('INT. KITCHEN - DAY');
     expect(t.guestStatus).toEqual(['connected', 'synced']);
     expect(t.hostStatus).toEqual(['connected', 'synced']);
@@ -163,20 +166,59 @@ describe('LiveProvider', () => {
     const t = setup();
     t.host.awareness.setLocalStateField('user', { name: 'Ad', color: '#111' });
     t.guest.awareness.setLocalStateField('user', { name: 'Partner', color: '#222' });
-    const guestPeers: LiveUser[][] = [];
-    (t.guest as any).opts.onPeers = (u: LiveUser[]) => guestPeers.push(u);
     await Promise.all([t.host.connect(async () => {}), t.guest.connect(async () => {})]);
     await tick();
     await t.host.close();
     await tick();
     expect(t.guestClosed).toEqual(['The other person left.']);
     expect(t.guestStatus[t.guestStatus.length - 1]).toBe('disconnected');
-    const lastPeers = guestPeers[guestPeers.length - 1].map((u) => u.name);
+    const lastPeers = t.guestPeers[t.guestPeers.length - 1].map((u) => u.name);
     expect(lastPeers).toEqual(['Partner']);
     // closing twice, or destroying after, is harmless
     await t.host.close();
     t.host.destroy();
     t.guest.destroy();
+  });
+
+  it('whenSynced resolves once the script has arrived, and rejects on timeout or close', async () => {
+    const t = setup();
+    t.hostDoc.getText('t').insert(0, 'hello');
+    await Promise.all([t.host.connect(async () => {}), t.guest.connect(async () => {})]);
+    await t.guest.whenSynced(1000);
+    expect(t.guestDoc.getText('t').toString()).toBe('hello');
+    await t.guest.whenSynced(1000); // already synced: immediate
+
+    // never connected: times out with a plain message
+    const lonely = new LiveProvider(new Y.Doc(), { bridge: linkedBridges().a.bridge });
+    await expect(lonely.whenSynced(30)).rejects.toThrow('did not arrive');
+
+    // session ends while waiting
+    const t2 = setup();
+    const waiting = t2.guest.whenSynced(1000);
+    t2.guest.destroy();
+    await expect(waiting).rejects.toThrow('ended');
+  });
+
+  it('close() tears down immediately and still tells the other side', async () => {
+    const t = setup();
+    await Promise.all([t.host.connect(async () => {}), t.guest.connect(async () => {})]);
+    await tick();
+    const p = t.host.close(); // not awaited yet
+    t.hostDoc.getText('t').insert(0, 'after close'); // must not be sent
+    await p;
+    await tick();
+    expect(t.guestClosed).toEqual(['The other person left.']);
+    expect(t.guestDoc.getText('t').toString()).toBe('');
+  });
+
+  it('sends nothing before the connection is up, then catches the peer up on hello', async () => {
+    const t = setup();
+    t.hostDoc.getText('t').insert(0, 'typed early'); // before connect
+    await tick();
+    expect(t.a.state.sent).toBe(0);
+    await Promise.all([t.host.connect(async () => {}), t.guest.connect(async () => {})]);
+    await t.guest.whenSynced(2000);
+    expect(t.guestDoc.getText('t').toString()).toBe('typed early');
   });
 
   it('cleans up and rethrows when the connection attempt fails', async () => {

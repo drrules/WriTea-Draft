@@ -89,7 +89,9 @@ export class LiveProvider {
   private unlisten: Array<() => void> = [];
   private queue: Promise<void> = Promise.resolve();
   private destroyed = false;
+  private connected = false;
   private status: LiveStatus = 'connecting';
+  private syncWaiters: Array<{ resolve: () => void; reject: (e: Error) => void }> = [];
 
   constructor(document: Y.Doc, opts: LiveProviderOptions = {}) {
     this.document = document;
@@ -117,6 +119,7 @@ export class LiveProvider {
       throw e;
     }
     if (this.destroyed) return;
+    this.connected = true;
     this.setStatus('connected');
     this.send(SYNC_REQUEST, Y.encodeStateVector(this.document));
     if (this.awareness.getLocalState() !== null) {
@@ -127,18 +130,47 @@ export class LiveProvider {
   /** Ends the session (the other side is told) and releases everything. */
   async close(): Promise<void> {
     if (this.destroyed) return;
+    this.destroy(); // local teardown is immediate, so callers need not await
     try {
       await this.bridge.close();
     } catch {
       /* already closed */
     }
-    this.destroy();
+  }
+
+  /**
+   * Resolves once the peer's copy of the document has arrived. Rejects if the
+   * session ends first, or after `timeoutMs`.
+   */
+  whenSynced(timeoutMs = 15000): Promise<void> {
+    if (this.status === 'synced') return Promise.resolve();
+    if (this.destroyed || this.status === 'disconnected') {
+      return Promise.reject(new Error('The session ended before the script arrived.'));
+    }
+    return new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.syncWaiters = this.syncWaiters.filter((w) => w !== waiter);
+        reject(new Error('Connected, but the script did not arrive. Please try again.'));
+      }, timeoutMs);
+      const waiter = {
+        resolve: () => {
+          clearTimeout(timer);
+          resolve();
+        },
+        reject: (e: Error) => {
+          clearTimeout(timer);
+          reject(e);
+        },
+      };
+      this.syncWaiters.push(waiter);
+    });
   }
 
   /** Releases listeners without touching the connection. Safe to repeat. */
   destroy(): void {
     if (this.destroyed) return;
     this.destroyed = true;
+    this.flushWaiters(new Error('The session ended before the script arrived.'));
     this.removeListeners();
     this.document.off('update', this.onDocUpdate);
     this.awareness.off('update', this.onAwarenessUpdate);
@@ -149,7 +181,9 @@ export class LiveProvider {
   // ── outgoing ──────────────────────────────────────────────────────────
 
   private send(type: number, payload: Uint8Array): void {
-    if (this.destroyed) return;
+    // Nothing goes out before the link is up (the hello after connecting
+    // carries everything that happened earlier) or after it has ended.
+    if (this.destroyed || !this.connected) return;
     const data = frame(type, payload);
     // One at a time, in order; a failed send just means the session is
     // ending, which arrives separately as the closed event.
@@ -209,6 +243,7 @@ export class LiveProvider {
 
   private onClosed = (reason: string): void => {
     if (this.destroyed) return;
+    this.connected = false;
     const others = Array.from(this.awareness.getStates().keys()).filter(
       (id) => id !== this.document.clientID,
     );
@@ -220,7 +255,18 @@ export class LiveProvider {
   private setStatus(s: LiveStatus): void {
     if (this.status === s) return;
     this.status = s;
+    if (s === 'synced') this.flushWaiters(null);
+    if (s === 'disconnected') this.flushWaiters(new Error('The session ended before the script arrived.'));
     this.opts.onStatus?.(s);
+  }
+
+  private flushWaiters(err: Error | null): void {
+    const waiters = this.syncWaiters;
+    this.syncWaiters = [];
+    for (const w of waiters) {
+      if (err) w.reject(err);
+      else w.resolve();
+    }
   }
 
   private removeListeners(): void {
