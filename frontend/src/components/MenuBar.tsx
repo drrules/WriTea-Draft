@@ -3399,12 +3399,18 @@ const MenuBar: React.FC<MenuBarProps> = ({
           <div className="dialog-header">About WriTea Draft</div>
           <div className="dialog-body about-body">
             <div className="about-title">WriTea Draft</div>
-            <div className="about-version">Version 1.0.4</div>
+            <div className="about-version">Version 1.0.42</div>
             <div className="about-tagline">Free, open-source screenwriting software</div>
 
             <div className="about-whats-new">
-              <div className="about-section-title">What's New in 1.0.0</div>
+              <div className="about-section-title">What's New in 1.0.42</div>
               <div className="about-changelog">
+              <div className="about-subsection-title">v1.0.42</div>
+              <ul className="about-list">
+                <li><strong>Live Co-editing Without A Direct Path.</strong> If two computers cannot find each other directly (a phone hotspot or a protected network, for example), the host is offered a relay code and you swap codes a second time. The relay only passes the traffic along. Your IP address is shared with it, but your document is not: the work itself is end-to-end encrypted. Some networks block relays too, so after three failed tries in one session the dialog asks you to try again at another time.</li>
+                <li><strong>Live Co-editing Is In Tools.</strong> Start a Live Session and Join a Live Session moved from the File menu to the Tools menu.</li>
+                <li><strong>A Shorter Wait.</strong> A host now waits 42 seconds for the other person before giving up, instead of three minutes.</li>
+              </ul>
               <div className="about-subsection-title">v1.0.0</div>
               <ul className="about-list">
                 <li><strong>Lossless Final Draft Files.</strong> Open a Final Draft (.fdx) file, edit it, save it, and everything you did not change is written back as it was: paragraph ids, scene properties, colours, adornments, settings, the free-form title page, character highlighting and revision labels. Anything WriTea Draft does not model is carried through untouched, and a safety copy of the original is kept before the first overwrite.</li>
