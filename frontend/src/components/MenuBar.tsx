@@ -45,7 +45,6 @@ import { INDUSTRY_STANDARD_ID, ELEMENT_DESCRIPTIONS } from '../stores/formatting
 import { getCurrentElementRule, getLockedFormatting } from '../utils/effectiveFormatting';
 import { selectionStartsNewPage } from '../editor/extensions';
 import { pluginRegistry } from '../plugins/registry';
-import AuthIndicator from './AuthIndicator';
 import { useNavigate } from 'react-router-dom';
 import { flushPendingSave, setLeaveGuard, leaveEditor as leaveEditorScreen } from '../services/pendingSave';
 import { scriptApi } from '../services/scriptApi';
@@ -2350,7 +2349,7 @@ const MenuBar: React.FC<MenuBarProps> = ({
         {
           icon: <FaFileImport />, label: 'Import',
           children: [
-            { icon: <FaFileCode />, label: 'Final Draft / Fountain / Fade In / WriTea Draft…', action: () => confirmOrRun(handleImport), disabled: isCollabGuest },
+            { icon: <FaFileCode />, label: 'Fountain / Fade In…', action: () => confirmOrRun(handleImport), disabled: isCollabGuest },
             { icon: <FaFileWord />, label: 'Microsoft Word (.docx)…', action: handleImportDocx, disabled: isCollabGuest },
             { separator: true, label: '' },
             { icon: <FaFileExcel />, label: 'AV Document (.yaml / .xlsx / .csv)…', action: () => confirmOrRun(handleImportAvSheet), disabled: isCollabGuest },
@@ -3212,7 +3211,6 @@ const MenuBar: React.FC<MenuBarProps> = ({
         <span className="menu-label">Help</span>
       </div>
       <div className="menu-spacer" />
-      <AuthIndicator />
     </>
   );
 
@@ -3410,6 +3408,9 @@ const MenuBar: React.FC<MenuBarProps> = ({
                 <li><strong>Live Co-editing Without A Direct Path.</strong> If two computers cannot find each other directly (a phone hotspot or a protected network, for example), the host is offered a relay code and you swap codes a second time. The relay only passes the traffic along. Your IP address is shared with it, but your document is not: the work itself is end-to-end encrypted. Some networks block relays too, so after three failed tries in one session the dialog asks you to try again at another time.</li>
                 <li><strong>Live Co-editing Is In Tools.</strong> Start a Live Session and Join a Live Session moved from the File menu to the Tools menu.</li>
                 <li><strong>A Shorter Wait.</strong> A host now waits 42 seconds for the other person before giving up, instead of three minutes.</li>
+                <li><strong>Simpler Import Menu.</strong> Final Draft files open through File &#9656; Open, so the Import menu now lists Fountain and Fade In only.</li>
+                <li><strong>Version On The Splash.</strong> The splash screen now shows which version of WriTea Draft is starting.</li>
+                <li><strong>No Sign-In Button.</strong> The "Local only" button at the top right is gone, since there is no account or server to sign in to.</li>
               </ul>
               <div className="about-subsection-title">v1.0.0</div>
               <ul className="about-list">

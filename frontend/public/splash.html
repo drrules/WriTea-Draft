@@ -46,6 +46,13 @@
     margin-top: 8px;
     animation: fadeIn 0.8s ease-out 0.4s both;
   }
+  .version {
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 12px;
+    letter-spacing: 1px;
+    margin-top: 6px;
+    animation: fadeIn 0.8s ease-out 0.5s both;
+  }
   .spinner-container {
     margin-top: 38px;
     animation: fadeIn 0.8s ease-out 0.6s both;
@@ -72,6 +79,7 @@
   <img class="logo" src="splash-logo.png" width="180" height="180" alt="WriTea Draft">
   <div class="app-name">WriTea Draft</div>
   <div class="tagline">Professional Screenwriting</div>
+  <div class="version" id="version"></div>
   <div class="spinner-container"><div class="spinner"></div></div>
   <div class="status">Starting up...</div>
   </div>
@@ -81,6 +89,13 @@
     if (/Mac/i.test(navigator.userAgent)) {
       document.querySelector('.shell').style.borderRadius = '0';
     }
+
+    // The version comes from the app itself, so it never has to be edited here.
+    try {
+      window.__TAURI_INTERNALS__.invoke('plugin:app|version').then(function (v) {
+        document.getElementById('version').textContent = 'Version ' + v;
+      }).catch(function () {});
+    } catch (e) {}
   </script>
 </body>
 </html>
