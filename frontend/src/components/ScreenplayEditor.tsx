@@ -436,7 +436,7 @@ const ScreenplayEditor: React.FC = () => {
   const [joinCollabOpen, setJoinCollabOpen] = useState(false);
   const [collabUsers, setCollabUsers] = useState<{ name: string; color: string }[]>([]);
   const [collabColor, setCollabColor] = useState(() => randomCollabColor());
-  // ── Serverless live sessions (File ▸ Live Co-editing) ──
+  // ── Serverless live sessions (Tools ▸ Live Co-editing) ──
   const [liveMode, setLiveMode] = useState(false);
   const [liveDialog, setLiveDialog] = useState<'host' | 'join' | null>(null);
   const liveProviderRef = useRef<LiveProvider | null>(null);

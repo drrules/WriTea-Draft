@@ -5,8 +5,10 @@ mod tts;
 /// Serverless live co-editing sessions.
 mod live;
 use percent_encoding::percent_decode_str;
+#[allow(unused_imports)]
 use tauri::{Emitter, Manager};
 #[cfg(desktop)]
+#[allow(unused_imports)]
 use tauri::menu::{Menu, Submenu, PredefinedMenuItem, MenuItem};
 
 // ── Android JNI context ──────────────────────────────────────────────────
@@ -2487,6 +2489,7 @@ fn open_url(url: String) -> Result<(), String> {
 
 /// Rebuild the Window menu: standard items + list of all open windows.
 #[cfg(desktop)]
+#[allow(unused_variables)]
 fn rebuild_window_menu(app: &tauri::AppHandle, _menu: &Menu<tauri::Wry>) {
     #[cfg(not(target_os = "macos"))]
     return;

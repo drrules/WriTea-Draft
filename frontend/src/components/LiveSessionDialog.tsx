@@ -18,6 +18,11 @@ interface LiveSessionDialogProps {
 
 const NAME_KEY = 'writea-live-name';
 
+/** Failed connection attempts since the app started; a success resets it. */
+let failedAttempts = 0;
+let relayArmed = false;
+const MAX_ATTEMPTS = 3;
+
 function loadName(): string {
   try {
     return localStorage.getItem(NAME_KEY) ?? '';
@@ -62,6 +67,8 @@ const LiveSessionDialog: React.FC<LiveSessionDialogProps> = ({ role, begin, onCo
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
+  // True when this attempt goes through the relay (host: chosen after a direct failure; guest: read off the host's code).
+  const [relay, setRelay] = useState(relayArmed);
   const providerRef = useRef<LiveProvider | null>(null);
   const cancelledRef = useRef(false);
   const nameRef = useRef<HTMLInputElement>(null);
@@ -94,8 +101,9 @@ const LiveSessionDialog: React.FC<LiveSessionDialogProps> = ({ role, begin, onCo
       saveName(trimmed);
       const provider = begin(role, trimmed);
       providerRef.current = provider;
+      if (!isHost) setRelay(theirCode.replace(/\s+/g, '').startsWith('wt1r/'));
       const code = isHost
-        ? await invoke<string>('live_host_prepare')
+        ? await invoke<string>('live_host_prepare', { relay })
         : await invoke<string>('live_join_prepare', { hostCode: theirCode.trim() });
       if (cancelledRef.current) return;
       setMyCode(code);
@@ -126,6 +134,7 @@ const LiveSessionDialog: React.FC<LiveSessionDialogProps> = ({ role, begin, onCo
       );
       await provider.whenSynced();
       if (cancelledRef.current) return;
+      failedAttempts = 0; relayArmed = false;
       onConnected(role);
     } catch (err) {
       if (cancelledRef.current) return;
@@ -135,7 +144,17 @@ const LiveSessionDialog: React.FC<LiveSessionDialogProps> = ({ role, begin, onCo
       setMyCode('');
       setTheirCode('');
       setStep('name');
-      setError(`${plainMessage(err)} Start again to get fresh codes.`);
+      failedAttempts += 1;
+      if (isHost && !relay) { relayArmed = true; setRelay(true); }
+      if (failedAttempts >= MAX_ATTEMPTS) {
+        setError('Still unable to connect, please try again at another time.');
+      } else if (relay) {
+        setError(`${plainMessage(err)} Start again to get fresh codes.`);
+      } else if (isHost) {
+        setError(`${plainMessage(err)} Start again and the codes will go through a relay instead.`);
+      } else {
+        setError(`${plainMessage(err)} Ask the host to start again; they will send you a relay code.`);
+      }
     } finally {
       if (!cancelledRef.current) setBusy(false);
     }
@@ -222,7 +241,7 @@ const LiveSessionDialog: React.FC<LiveSessionDialogProps> = ({ role, begin, onCo
               {isHost ? (
                 <>
                   <p style={hintStyle}>
-                    2. They open File {'▸'} Live Co-editing {'▸'} Join a Live Session, paste your code, and send you
+                    2. They open Tools {'▸'} Live Co-editing {'▸'} Join a Live Session, paste your code, and send you
                     theirs. Paste their code here, then press Connect.
                   </p>
                   <textarea
@@ -249,6 +268,13 @@ const LiveSessionDialog: React.FC<LiveSessionDialogProps> = ({ role, begin, onCo
                 : 'Connecting…'}
               <br />
               This can take a few seconds.
+            </p>
+          )}
+
+          {relay && step !== 'connecting' && (
+            <p style={{ margin: '12px 0 0', fontSize: 13, color: 'var(--fd-text-muted)' }}>
+              Using a relay: while your IP address is shared with it, your document is not. The work itself is
+              end-to-end encrypted.
             </p>
           )}
 

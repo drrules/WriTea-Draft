@@ -1,6 +1,6 @@
 [package]
 name = "writeadraft"
-version = "1.0.0"
+version = "1.0.4"
 description = "WriTea Draft - Professional Screenwriting Application"
 authors = ["WriTea Media"]
 edition = "2021"
@@ -58,7 +58,7 @@ tauri-plugin-opener = "=2.5.2"
 tauri-plugin-clipboard-manager = "=2.3.3"
 reqwest = { version = "0.12", features = ["rustls-tls"], default-features = false }
 percent-encoding = "2"
-# Live co-editing sessions (src/live): serverless, relay-free direct connections.
+# Live co-editing sessions (src/live): direct connections, with a relay fallback (IPs are shared with the relay; the document stays end-to-end encrypted).
 iroh = "=1.3.0"
 tokio = { version = "1", features = ["sync", "time", "rt"] }
 base64 = "0.22"

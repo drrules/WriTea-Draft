@@ -5,17 +5,22 @@
 //! on the local network, so people on the same Wi-Fi connect without needing
 //! the router to loop packets back. Both computers keep sending small packets
 //! at each other's addresses until one answers ("hole punching"). The
-//! connection itself is QUIC through iroh with relays disabled: encrypted,
-//! mutually authenticated by public key, and carrying no data through anyone
-//! else's server.
+//! connection itself is QUIC through iroh, direct whenever possible: encrypted
+//! and mutually authenticated by public key. If no direct path exists, a relay
+//! code sends it through a public iroh relay instead (see relay.rs). The relay
+//! sees both IP addresses but never the document, which stays end-to-end
+//! encrypted.
 //!
 //! This file has no Tauri dependency so it can be tested on its own.
 
 use iroh::endpoint::{RecvStream, SendStream};
 use iroh::{Endpoint, EndpointAddr, EndpointId, RelayMode, SecretKey, endpoint::presets};
 use std::net::{SocketAddr, ToSocketAddrs, UdpSocket};
+use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
+
+pub mod relay;
 
 const ALPN: &[u8] = b"writea-draft/live/1";
 const PREFERRED_PORT: u16 = 42200;
@@ -41,6 +46,13 @@ impl std::fmt::Display for LiveError {
     }
 }
 impl std::error::Error for LiveError {}
+/// Progress notes on the program's error output (visible when the app is
+/// started from a terminal). They carry no script text and no secrets.
+fn trace(msg: impl AsRef<str>) {
+    static T0: OnceLock<Instant> = OnceLock::new();
+    let t0 = T0.get_or_init(Instant::now);
+    eprintln!("[live +{:.1}s] {}", t0.elapsed().as_secs_f32(), msg.as_ref());
+}
 fn err<T>(msg: impl Into<String>) -> Result<T, LiveError> {
     Err(LiveError(msg.into()))
 }
@@ -68,7 +80,7 @@ impl Default for Config {
             stun_servers: DEFAULT_STUN.iter().map(|s| s.to_string()).collect(),
             preferred_port: PREFERRED_PORT,
             connect_timeout: Duration::from_secs(30),
-            host_wait: Duration::from_secs(180),
+            host_wait: Duration::from_secs(42),
             allow_lan_only: true,
         }
     }
@@ -263,9 +275,11 @@ pub struct Session {
     conn: iroh::endpoint::Connection,
 }
 impl Session {
+    #[cfg(test)]
     pub fn close(&self) {
         self.conn.close(0u32.into(), b"bye");
     }
+
     /// Splits into the parts a caller can hand to different tasks.
     pub fn into_parts(
         self,
@@ -291,9 +305,6 @@ pub struct Closer {
     _endpoint: Endpoint,
 }
 impl Closer {
-    pub fn close(&self) {
-        self.conn.close(0u32.into(), b"bye");
-    }
 
     /// Ends the session and waits (briefly) until the goodbye has actually
     /// reached the other side. Dropping the connection without waiting leaves
@@ -351,6 +362,8 @@ fn run_session(
 
 pub struct HostPrep {
     pub code: String,
+    /// Relay mode only: the endpoint that is already connected to the relay.
+    relay_ep: Option<Endpoint>,
     sock: UdpSocket,
     key: SecretKey,
     secret: String,
@@ -377,10 +390,11 @@ pub async fn host_prepare(cfg: Config) -> Result<HostPrep, LiveError> {
         let sock = bind_discovery_socket(cfg.preferred_port)?;
         let port = sock.local_addr().map_err(e("socket"))?.port();
         let cands = candidates_for_code(&sock, &cfg, port)?;
+        trace(format!("host: local port {port}, offering {}", format_candidates(&cands)));
         let key = SecretKey::generate();
         let secret: String = (0..8).map(|_| format!("{:02x}", SecretKey::generate().to_bytes()[0])).collect();
         let code = format!("{CODE_PREFIX}/{}/{}/{}", key.public(), format_candidates(&cands), secret);
-        Ok(HostPrep { code, sock, key, secret, port, cfg })
+        Ok(HostPrep { code, sock, key, secret, port, cfg, relay_ep: None })
     })
     .await
     .map_err(e("internal"))?
@@ -389,9 +403,13 @@ pub async fn host_prepare(cfg: Config) -> Result<HostPrep, LiveError> {
 pub async fn host_accept(prep: HostPrep, guest_code: &str) -> Result<Session, LiveError> {
     let p = parse_code(guest_code, 2)?;
     let gid: EndpointId = p[0].parse().map_err(|_| LiveError("That guest code doesn't look right.".into()))?;
+    if let Some(ep) = prep.relay_ep.clone() {
+        return relay::host_accept(ep, gid, prep.secret, prep.cfg).await;
+    }
     let gcands = parse_candidates(&p[1], "guest")?;
     let HostPrep { sock, key, secret, port, cfg, .. } = prep;
     let host_wait = cfg.host_wait;
+    trace(format!("host: knocking on the guest's addresses {}", format_candidates(&gcands)));
     // Keep knocking until the guest answers (they may take a while to press Connect).
     let heard = tokio::task::spawn_blocking(move || {
         let heard = punch_until_heard(&sock, &gcands, host_wait);
@@ -400,15 +418,30 @@ pub async fn host_accept(prep: HostPrep, guest_code: &str) -> Result<Session, Li
     })
     .await
     .map_err(e("internal"))?;
-    if heard.is_none() {
-        return Err(no_direct_path());
-    }
+    let Some(heard_from) = heard else {
+        trace("host: the guest never answered the knocking");
+        return Err(no_direct_path_at("host", "the guest never answered the knocking"));
+    };
+    trace(format!("host: heard the guest at {heard_from}; opening the connection port"));
     let ep = make_endpoint(key, port).await?;
     let wait = async {
         loop {
             let incoming = ep.accept().await.ok_or_else(|| LiveError("Connection closed.".into()))?;
-            let Ok(accepting) = incoming.accept() else { continue };
-            let Ok(conn) = accepting.await else { continue };
+            trace("host: someone is trying to connect");
+            let accepting = match incoming.accept() {
+                Ok(a) => a,
+                Err(x) => {
+                    trace(format!("host: could not accept the attempt: {x}"));
+                    continue;
+                }
+            };
+            let conn = match accepting.await {
+                Ok(c) => c,
+                Err(x) => {
+                    trace(format!("host: the attempt failed: {x}"));
+                    continue;
+                }
+            };
             if conn.remote_id() != gid {
                 conn.close(1u32.into(), b"unexpected identity");
                 continue;
@@ -416,9 +449,11 @@ pub async fn host_accept(prep: HostPrep, guest_code: &str) -> Result<Session, Li
             return Ok::<_, LiveError>(conn);
         }
     };
-    let conn = tokio::time::timeout(cfg.connect_timeout, wait)
-        .await
-        .map_err(|_| no_direct_path())??;
+    let conn = tokio::time::timeout(cfg.connect_timeout, wait).await.map_err(|_| {
+        trace("host: no connection arrived in time");
+        no_direct_path_at("host", "no connection arrived in time")
+    })??;
+    trace("host: connected");
     let (mut send, mut recv) = conn.accept_bi().await.map_err(e("Connection dropped"))?;
     let hello = read_frame(&mut recv).await?;
     if hello != secret.as_bytes() {
@@ -433,6 +468,8 @@ pub async fn host_accept(prep: HostPrep, guest_code: &str) -> Result<Session, Li
 
 pub struct JoinPrep {
     pub code: String,
+    /// Relay mode only: the relay address to dial through.
+    relay: Option<String>,
     sock: UdpSocket,
     key: SecretKey,
     hid: EndpointId,
@@ -443,6 +480,9 @@ pub struct JoinPrep {
 }
 
 pub async fn join_prepare(cfg: Config, host_code: &str) -> Result<JoinPrep, LiveError> {
+    if relay::is_relay_code(host_code) {
+        return relay::join_prepare(cfg, host_code).await;
+    }
     let p = parse_code(host_code, 3)?;
     let bad = || LiveError("That host code doesn't look right.".into());
     let hid: EndpointId = p[0].parse().map_err(|_| bad())?;
@@ -452,18 +492,23 @@ pub async fn join_prepare(cfg: Config, host_code: &str) -> Result<JoinPrep, Live
         let sock = bind_discovery_socket(cfg.preferred_port)?;
         let port = sock.local_addr().map_err(e("socket"))?.port();
         let cands = candidates_for_code(&sock, &cfg, port)?;
+        trace(format!("guest: local port {port}, offering {}", format_candidates(&cands)));
         let key = SecretKey::generate();
         let code = format!("{CODE_PREFIX}/{}/{}", key.public(), format_candidates(&cands));
-        Ok(JoinPrep { code, sock, key, hid, hcands, secret, port, cfg })
+        Ok(JoinPrep { code, sock, key, hid, hcands, secret, port, cfg, relay: None })
     })
     .await
     .map_err(e("internal"))?
 }
 
 pub async fn join_connect(prep: JoinPrep) -> Result<Session, LiveError> {
+    if prep.relay.is_some() {
+        return relay::join_connect(prep).await;
+    }
     let JoinPrep { sock, key, hid, hcands, secret, port, cfg, .. } = prep;
     let wait = cfg.connect_timeout;
     let targets = hcands.clone();
+    trace(format!("guest: knocking on the host's addresses {}", format_candidates(&hcands)));
     let heard = tokio::task::spawn_blocking(move || {
         let heard = punch_until_heard(&sock, &targets, wait);
         drop(sock);
@@ -471,7 +516,11 @@ pub async fn join_connect(prep: JoinPrep) -> Result<Session, LiveError> {
     })
     .await
     .map_err(e("internal"))?;
-    let Some(from) = heard else { return Err(no_direct_path()) };
+    let Some(from) = heard else {
+        trace("guest: the host never answered the knocking");
+        return Err(no_direct_path_at("guest", "the host never answered the knocking"));
+    };
+    trace(format!("guest: heard the host at {from}; connecting"));
     let ep = make_endpoint(key, port).await?;
     // Offer every address from the code, plus the one the host answered from.
     let mut dial = EndpointAddr::new(hid);
@@ -480,8 +529,15 @@ pub async fn join_connect(prep: JoinPrep) -> Result<Session, LiveError> {
     }
     let conn = tokio::time::timeout(cfg.connect_timeout, ep.connect(dial, ALPN))
         .await
-        .map_err(|_| no_direct_path())?
-        .map_err(|_| no_direct_path())?;
+        .map_err(|_| {
+            trace("guest: the connection attempt timed out");
+            no_direct_path_at("guest", "the connection attempt timed out")
+        })?
+        .map_err(|x| {
+            trace(format!("guest: the connection attempt failed: {x}"));
+            no_direct_path_at("guest", &format!("the connection attempt failed: {x}"))
+        })?;
+    trace("guest: connected");
     let (mut send, mut recv) = conn.open_bi().await.map_err(e("Connection dropped"))?;
     write_frame(&mut send, secret.as_bytes()).await?;
     let ok = read_frame(&mut recv).await?;
@@ -489,6 +545,11 @@ pub async fn join_connect(prep: JoinPrep) -> Result<Session, LiveError> {
         return err("The host didn't accept the connection.");
     }
     Ok(run_session(ep, conn, send, recv))
+}
+
+/// Same plain message, plus one line of technical detail to help find out why.
+fn no_direct_path_at(who: &str, detail: &str) -> LiveError {
+    LiveError(format!("{} (Technical detail, {who}: {detail}.)", no_direct_path().0))
 }
 
 fn no_direct_path() -> LiveError {

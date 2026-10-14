@@ -66,9 +66,18 @@ async fn attach(app: AppHandle, state: &LiveState, session: Session) {
 
 /// Host, step 1: returns the code to send ("Reach out with this code").
 #[tauri::command]
-pub async fn live_host_prepare(state: State<'_, LiveState>) -> Result<String, String> {
+pub async fn live_host_prepare(
+    state: State<'_, LiveState>,
+    relay: Option<bool>,
+) -> Result<String, String> {
     end_current(&state).await;
-    let prep = transport::host_prepare(Config::default()).await.map_err(|e| e.0)?;
+    eprintln!("[live] host_prepare relay={}", relay.unwrap_or(false));
+    let made = if relay.unwrap_or(false) {
+        transport::relay::host_prepare(Config::default()).await
+    } else {
+        transport::host_prepare(Config::default()).await
+    };
+    let prep = made.map_err(|e| e.0)?;
     let code = prep.code.clone();
     state.inner.lock().await.host = Some(prep);
     Ok(code)
