@@ -2817,7 +2817,7 @@ const MenuBar: React.FC<MenuBarProps> = ({
           ],
         },
         { separator: true, label: '' },
-        { icon: <FaCog />, label: 'System Settings…', action: goToSettings },
+        { icon: <FaCog />, label: 'WriTea Settings…', action: goToSettings },
         { separator: true, label: '' },
         {
           icon: <FaFilm />, label: 'Production',
@@ -3410,6 +3410,7 @@ const MenuBar: React.FC<MenuBarProps> = ({
                 <li><strong>A Shorter Wait.</strong> A host now waits 42 seconds for the other person before giving up, instead of three minutes.</li>
                 <li><strong>Simpler Import Menu.</strong> Final Draft files open through File &#9656; Open, so the Import menu now lists Fountain and Fade In only.</li>
                 <li><strong>Version On The Splash.</strong> The splash screen now shows which version of WriTea Draft is starting.</li>
+                <li><strong>WriTea Settings.</strong> The settings page and its menu entry are now called WriTea Settings.</li>
                 <li><strong>No Sign-In Button.</strong> The "Local only" button at the top right is gone, since there is no account or server to sign in to.</li>
               </ul>
               <div className="about-subsection-title">v1.0.0</div>
