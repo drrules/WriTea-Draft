@@ -64,10 +64,6 @@ import SceneNavigator from './SceneNavigator';
 import IndexCards from './IndexCards';
 import BeatBoard from './BeatBoard';
 import ScriptStatistics from './ScriptStatistics';
-import TableReadPanel from './TableReadPanel';
-import VoiceProviderDialog from './VoiceProviderDialog';
-import { TableReadHighlight } from '../editor/extensions/TableReadHighlight';
-import { useTableReadStore } from '../stores/tableReadStore';
 import ScriptNotes from './ScriptNotes';
 import CharacterProfiles from './CharacterProfiles';
 import TagsPanel from './TagsPanel';
@@ -422,7 +418,6 @@ const ScreenplayEditor: React.FC = () => {
     showRevisionColors,
     saveStatus, saveError, setSaveStatus,
   } = useEditorStore();
-  const tableReadOpen = useTableReadStore((s) => s.open);
 
   const { currentProject, currentScriptId, setCurrentProject, setCurrentScriptId, scriptReloadKey, markCloudScript, isCloudScript } = useProjectStore();
 
@@ -1845,7 +1840,7 @@ const ScreenplayEditor: React.FC = () => {
       Section, Note,
       ShowEpisode, CastList, DualDialogue, DualDialogueColumn, TitlePage,
       AvBlock, AvRow, AvCell, AvPara, AvShot, AvDirection, AvGraphic, AvImage, AvKeymap, AvCueDecorations,
-      ScriptNoteMark, TagMark, TableReadHighlight,
+      ScriptNoteMark, TagMark,
       RevisionMark.configure({
         // A checked-in draft is read-only: draw its revisions, add none.
         getConfig: () => {
@@ -5330,10 +5325,6 @@ const ScreenplayEditor: React.FC = () => {
               </div>
             </div>
           )}
-          {/* Table Read docks over the bottom of the script it is reading. */}
-          {!isHistoryMode && tableReadOpen && editor && !statisticsOpen && !beatBoardOpen && (
-            <TableReadPanel editor={editor} />
-          )}
         </div>
         {!isHistoryMode && rightPanelVisible && (
           <div className="panel-resize-handle" onPointerDown={(e) => handleResizePointerDown('right', e)} style={{ touchAction: 'none' }} />
@@ -5438,7 +5429,6 @@ const ScreenplayEditor: React.FC = () => {
           onClose={() => setOpenFileOpen(false)}
         />
       )}
-      {!isHistoryMode && <VoiceProviderDialog />}
       {!isHistoryMode && showWelcome && !recoveryPending && <WelcomeDialog onChoice={handleWelcomeChoice} />}
       {/* After the recovery prompt, never alongside it — two launch dialogs at
           once is what #68 warned about. */}

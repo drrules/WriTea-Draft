@@ -10,7 +10,6 @@ import LinkedFileSync from './components/LinkedFileSync';
 import { pluginRegistry } from './plugins/registry';
 import './styles/screenplay.css';
 import './styles/avScript.css';
-import './styles/tableRead.css';
 
 function App() {
   const pluginRoutes = pluginRegistry.getRoutes();

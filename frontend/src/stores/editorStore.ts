@@ -609,34 +609,14 @@ export interface CharacterProfile {
   sampleDialogue: string;
   /** Asset IDs of images associated with this character */
   images: string[];
-  /**
-   * The voice Table Read gives this character (WriTeaDraft-only). Optional, and
-   * absent on every profile written before Table Read existed.
-   */
-  voice?: CharacterVoice;
-}
-
-/**
- * A character's Table Read voice, one slot per kind of engine.
- *
- * Kept apart because the two never share ids: a system voice is whatever the
- * machine reading the script has installed — a script opened on another
- * computer may not find it, and then falls back to an automatic pick — while
- * an AI voice belongs to a provider and travels with the script intact.
- */
-export interface CharacterVoice {
-  /** Voice id of an installed system voice. */
-  system?: string;
-  /** `<provider>:<voice id>` of an AI provider's voice. */
-  ai?: string;
 }
 
 /**
  * A character profile read back from a saved script, as the fields
  * upsertCharacterProfile takes.
  *
- * Every field is carried, including ones added after a script was written
- * (the Table Read voice, issue #131). The two loaders in ScreenplayEditor
+ * Every field is carried, including ones added after a script was written.
+ * The two loaders in ScreenplayEditor
  * used to copy the fields one by one, and a field missing from their list was
  * silently dropped on open — then gone for good at the next save.
  */
@@ -657,14 +637,6 @@ export function savedProfileFields(prof: Record<string, unknown>): Partial<Omit<
     sampleDialogue: str(prof.sampleDialogue),
     images: Array.isArray(prof.images) ? (prof.images as string[]) : [],
   };
-  const v = prof.voice;
-  if (v && typeof v === 'object') {
-    const voice: CharacterVoice = {};
-    const rec = v as Record<string, unknown>;
-    if (typeof rec.system === 'string' && rec.system) voice.system = rec.system;
-    if (typeof rec.ai === 'string' && rec.ai) voice.ai = rec.ai;
-    if (voice.system || voice.ai) fields.voice = voice;
-  }
   return fields;
 }
 
