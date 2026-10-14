@@ -77,7 +77,7 @@ const TreatmentEditor: React.FC = () => {
     let cancelled = false;
     (async () => {
       try {
-        // A treatment in a project folder is an .writea file there (issue
+        // A treatment in a project folder is a .writea file there (issue
         // #135); pick up a change made to it elsewhere before showing it.
         try {
           const lf = await import('../services/linkedFiles');

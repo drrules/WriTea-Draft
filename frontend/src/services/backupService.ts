@@ -25,7 +25,7 @@ import {
   type ParsedBackup,
 } from '../utils/backupNaming';
 import {
-  serializeWritea, parseWritea, parseWriteaLoose,
+  serializeWritea, parseWritea,
   type ParsedWritea, type BackupKind,
 } from '../utils/writeaFormat';
 import { collectAssetRefs, packAssets, packScratchAssets } from './snapshotAssets';
@@ -46,7 +46,7 @@ export interface BackupEntry {
   title: string;
   scriptKey: string;
   date: Date;
-  /** 'external' = an .writea file in the folder that WriTea Draft did not write. */
+  /** 'external' = a .writea file in the folder that WriTea Draft did not write. */
   kind: 'auto' | 'manual' | 'external';
   sizeBytes: number;
   /**
@@ -333,7 +333,7 @@ export async function listSnapshots(): Promise<BackupEntry[]> {
         date: parsed.timestamp, kind: parsed.kind, sizeBytes: e.sizeBytes, project: e.project,
       });
     } else {
-      // An .writea the user put here themselves (an export, a copy). Listed so
+      // A .writea the user put here themselves (an export, a copy). Listed so
       // it can be recovered, tagged 'external' so it is never pruned.
       out.push({
         path: e.path, name: e.name, title: e.name.replace(/\.writea$/i, ''),
@@ -400,12 +400,7 @@ export async function readSnapshot(path: string): Promise<ParsedWritea> {
       text = await invoke<string>('read_text_file', { path });
   }
 
-  try {
-    return parseWritea(text);
-  } catch {
-    // Older builds wrote crash backups with no envelope; recover them anyway.
-    return parseWriteaLoose(text);
-  }
+  return parseWritea(text);
 }
 
 export async function deleteSnapshot(path: string): Promise<void> {

@@ -1,26 +1,24 @@
 /**
- * WriTea Draft native format (.writea) — import/export utilities.
+ * WriTea Draft native format (.writea) import/export utilities.
  *
- * An .writea file is a JSON document containing the script metadata and
- * TipTap content, designed for lossless round-tripping. It is also the format
- * automatic backups are written in, which is why fidelity matters here: a
- * snapshot that can't be fully restored is not a backup.
+ * A .writea file is a JSON document holding the script, its metadata and
+ * everything that goes with it, designed for lossless round-tripping. It is
+ * also the format automatic backups are written in, which is why fidelity
+ * matters here: a snapshot that can't be fully restored is not a backup.
  *
- * ## Versions
+ * `content` is the full buildSaveContent() payload (the document plus every
+ * `_`-prefixed store key), `meta` carries provenance, and `assets` may embed
+ * the images the document references. Images live outside the document as
+ * `assetId` references, so without embedding them a restored script comes
+ * back with every image broken.
  *
- * - **v1** — `content` was whatever the caller passed. In practice File →
- *   Export passed the bare editor JSON, so notes, tags, beats and character
- *   profiles were silently dropped. Still readable.
- * - **v2** — `content` is the full `buildSaveContent()` payload (document plus
- *   every `_`-prefixed store key), `meta` carries provenance, and `assets` may
- *   embed the images the document references. Images live outside the document
- *   as `assetId` references into `$APPDATA/assets/`, so without embedding them
- *   a restored script comes back with every image broken.
+ * Only files carrying this format's own tags are accepted. There is no reader
+ * for any earlier format.
  */
 
 import type { ScriptMeta } from '../services/api';
 
-export const WRITEA_VERSION = 2;
+export const WRITEA_VERSION = 1;
 
 export type BackupKind = 'auto' | 'manual' | 'crash';
 
@@ -60,7 +58,7 @@ export interface ParsedWritea {
   meta: WriteaMeta;
   content: Record<string, unknown>;
   assets: WriteaAsset[];
-  /** Version the file declared; 0 for a bare payload recovered by parseWriteaLoose. */
+  /** Format version the file declared. */
   version: number;
 }
 
@@ -76,7 +74,7 @@ export interface ExportWriteaOptions {
   exportedAt?: string;
 }
 
-/** Build an .writea JSON blob from script metadata and content. */
+/** Build a .writea JSON blob from script metadata and content. */
 export function exportWritea(
   meta: ScriptMeta,
   content: Record<string, unknown>,
@@ -116,7 +114,7 @@ export function serializeWritea(
   return JSON.stringify(data, null, 2);
 }
 
-/** Download a script as an .writea file. */
+/** Download a script as a .writea file. */
 export async function downloadWritea(
   meta: ScriptMeta,
   content: Record<string, unknown>,
@@ -128,7 +126,7 @@ export async function downloadWritea(
   await saveFile(text, filename, [{ name: 'WriTea Draft', extensions: ['writea'] }]);
 }
 
-/** Parse an .writea JSON string back into meta + content. */
+/** Parse a .writea JSON string back into meta + content. */
 export function parseWritea(jsonText: string): ParsedWritea {
   let data: any;
   try {
@@ -137,7 +135,7 @@ export function parseWritea(jsonText: string): ParsedWritea {
     throw new Error('Invalid .writea file: not valid JSON');
   }
 
-  if (data.format !== 'writea-script') {
+  if (data?.format !== 'writea-script') {
     throw new Error('Invalid .writea file: unrecognized format');
   }
   if (typeof data.writea_version !== 'number') {
@@ -166,35 +164,4 @@ export function parseWritea(jsonText: string): ParsedWritea {
     content: data.content || {},
     assets: Array.isArray(data.assets) ? data.assets : [],
   };
-}
-
-/**
- * Parse an .writea file, falling back to accepting a bare payload.
- *
- * Older builds wrote crash backups as the raw `buildSaveContent()` object with
- * no envelope, which `parseWritea` rejects — meaning WriTea Draft could not open
- * its own emergency backup. Any such file already on a user's disk is
- * recoverable here: if the JSON has no envelope but looks like a ProseMirror
- * document, treat the whole object as the content.
- */
-export function parseWriteaLoose(jsonText: string): ParsedWritea {
-  let data: any;
-  try {
-    data = JSON.parse(jsonText);
-  } catch {
-    throw new Error('Invalid .writea file: not valid JSON');
-  }
-
-  if (data?.format === 'writea-script') return parseWritea(jsonText);
-
-  if (data?.type === 'doc') {
-    return {
-      version: 0,
-      meta: { title: 'Untitled', author: '', color: '', page_count: 0, project_id: null, script_id: null },
-      content: data,
-      assets: [],
-    };
-  }
-
-  throw new Error('Invalid .writea file: unrecognized format');
 }

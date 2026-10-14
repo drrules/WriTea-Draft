@@ -26,7 +26,7 @@ import {
   type BackupEntry,
 } from '../services/backupService';
 import { unpackAssets } from '../services/snapshotAssets';
-import { parseWriteaLoose, type ParsedWritea } from '../utils/writeaFormat';
+import { parseWritea, type ParsedWritea } from '../utils/writeaFormat';
 import { relativeTime } from '../utils/relativeTime';
 import { docHasAnyText } from '../utils/docText';
 import { openTextFile } from '../utils/fileOps';
@@ -220,7 +220,7 @@ const RecoverBackupDialog: React.FC<Props> = ({ open, onClose, onBeforeReplace }
     try {
       const file = await openTextFile([{ name: 'WriTea Draft', extensions: ['writea'] }]);
       if (!file) return;
-      const parsed = parseWriteaLoose(file.content);
+      const parsed = parseWritea(file.content);
       setSelected({
         path: file.name, name: file.name, title: parsed.meta.title || file.name,
         scriptKey: 'external', date: new Date(), kind: 'external',

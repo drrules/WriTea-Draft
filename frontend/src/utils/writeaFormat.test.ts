@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { serializeWritea, parseWritea, parseWriteaLoose, WRITEA_VERSION } from './writeaFormat';
+import { serializeWritea, parseWritea, WRITEA_VERSION } from './writeaFormat';
 import { SAVE_METADATA_KEYS } from './saveContent';
 import type { ScriptMeta } from '../services/api';
 
@@ -19,11 +19,11 @@ function fullContent(): Record<string, unknown> {
   return content;
 }
 
-describe('writea v2 round-trip', () => {
+describe('writea round-trip', () => {
   it('preserves every save-metadata key', () => {
-    // This is the permanent guard for the two bugs that motivated v2: a manual
-    // save dropping the spelling/grammar keys, and File → Export writing bare
-    // editor JSON so notes/tags/beats never came back.
+    // The permanent guard for two bugs: a manual save dropping the
+    // spelling/grammar keys, and an export writing bare editor JSON so
+    // notes/tags/beats never came back.
     const content = fullContent();
     const parsed = parseWritea(serializeWritea(META, content));
     for (const key of SAVE_METADATA_KEYS) {
@@ -60,18 +60,22 @@ describe('writea v2 round-trip', () => {
   });
 });
 
-describe('backward and forward compatibility', () => {
-  it('still reads a v1 file', () => {
+describe('version and format checks', () => {
+  it('writes the current version', () => {
+    expect(JSON.parse(serializeWritea(META, fullContent())).writea_version).toBe(WRITEA_VERSION);
+  });
+
+  it('reads a minimal version 1 file', () => {
     const v1 = JSON.stringify({
       writea_version: 1,
       format: 'writea-script',
-      exported_at: '2024-01-01T00:00:00.000Z',
-      meta: { title: 'Old', author: 'A', color: '', page_count: 3 },
+      exported_at: '2026-01-01T00:00:00.000Z',
+      meta: { title: 'Small', author: 'A', color: '', page_count: 3 },
       content: { type: 'doc', content: [] },
     });
     const parsed = parseWritea(v1);
     expect(parsed.version).toBe(1);
-    expect(parsed.meta.title).toBe('Old');
+    expect(parsed.meta.title).toBe('Small');
   });
 
   it('refuses a file from a newer WriTea Draft with a clear message', () => {
@@ -86,35 +90,20 @@ describe('backward and forward compatibility', () => {
   it('rejects non-JSON and foreign JSON', () => {
     expect(() => parseWritea('not json')).toThrow(/not valid JSON/);
     expect(() => parseWritea('{"format":"something-else"}')).toThrow(/unrecognized format/);
-  });
-});
-
-describe('parseWriteaLoose recovers legacy crash backups', () => {
-  // The old save-failure banner wrote the bare payload with no envelope.
-  const legacyBare = JSON.stringify({
-    type: 'doc',
-    content: [{ type: 'action', content: [{ type: 'text', text: 'rescued' }] }],
-    _notes: [{ id: 'n1' }],
+    expect(() => parseWritea('null')).toThrow(/unrecognized format/);
   });
 
-  it('parseWritea rejects it (this is the bug)', () => {
-    expect(() => parseWritea(legacyBare)).toThrow(/unrecognized format/);
+  it('rejects a bare editor payload with no envelope', () => {
+    const bare = JSON.stringify({ type: 'doc', content: [], _notes: [{ id: 'n1' }] });
+    expect(() => parseWritea(bare)).toThrow(/unrecognized format/);
   });
 
-  it('parseWriteaLoose accepts it and keeps the metadata', () => {
-    const parsed = parseWriteaLoose(legacyBare);
-    expect(parsed.version).toBe(0);
-    expect(parsed.content.type).toBe('doc');
-    expect(parsed.content._notes).toEqual([{ id: 'n1' }]);
-  });
-
-  it('parseWriteaLoose still prefers the envelope when present', () => {
-    const parsed = parseWriteaLoose(serializeWritea(META, fullContent()));
-    expect(parsed.version).toBe(WRITEA_VERSION);
-    expect(parsed.meta.title).toBe('The Long Goodbye');
-  });
-
-  it('parseWriteaLoose rejects JSON that is neither', () => {
-    expect(() => parseWriteaLoose('{"hello":"world"}')).toThrow(/unrecognized format/);
+  it('rejects the retired envelope from the old native format', () => {
+    const retired = JSON.stringify({
+      odraft_version: 2,
+      format: 'writeadraft-script',
+      meta: {}, content: { type: 'doc', content: [] },
+    });
+    expect(() => parseWritea(retired)).toThrow(/unrecognized format/);
   });
 });
