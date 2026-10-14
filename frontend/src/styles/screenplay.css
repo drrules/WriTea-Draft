@@ -2844,6 +2844,15 @@ div[data-type="cast-list"].is-empty::before { content: 'Cast...'; color: var(--p
 .status-origin { color: var(--fd-text-muted); font-style: italic; }
 .status-revision { color: #f0ad4e; }
 .status-page { font-variant-numeric: tabular-nums; }
+/* Spell-check language picker. */
+.status-language {
+  background: transparent; border: none; font: inherit; font-size: 11px;
+  color: var(--fd-text-muted); cursor: pointer; padding: 0 2px; max-width: 150px;
+}
+.status-language:hover { color: var(--fd-text); }
+.status-language:focus-visible { outline: 1px solid var(--fd-accent); outline-offset: 2px; }
+.status-language option { background: var(--fd-bg); color: var(--fd-text); }
+@media (max-width: 480px) { .status-language { display: none; } }
 /* Save failure recovery banner */
 .save-failure-banner {
   display: flex;

@@ -15,10 +15,10 @@ export interface BundledLanguage {
 }
 
 export const BUNDLED_LANGUAGES: BundledLanguage[] = [
-  { code: 'en_US', label: 'English (US)', file: 'en_US', sample: 'Aa' },
-  { code: 'en_CA', label: 'English (Canada)', file: 'en_CA', sample: 'Aa' },
-  { code: 'fr', label: 'French (Français)', file: 'fr', sample: 'Àà' },
-  { code: 'es', label: 'Spanish (Español)', file: 'es_ES', sample: 'Ññ' },
+  { code: 'en_US', label: 'US English', file: 'en_US', sample: 'Aa' },
+  { code: 'en_CA', label: 'Canadian English', file: 'en_CA', sample: 'Aa' },
+  { code: 'fr', label: 'French', file: 'fr', sample: 'Àà' },
+  { code: 'es', label: 'Spanish', file: 'es_ES', sample: 'Ññ' },
 ];
 
 /** Always loaded first, so the checker has a working language while any

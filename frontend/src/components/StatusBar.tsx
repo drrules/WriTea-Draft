@@ -7,6 +7,7 @@ import { useFormattingTemplateStore } from '../stores/formattingTemplateStore';
 import { activeTimingOptions, computeSceneTiming, formatRuntime } from '../utils/scriptTiming';
 import { computeScriptStructure } from '../utils/scriptStructure';
 import { DEFAULT_PACING, pacingOption } from '../utils/scriptProfile';
+import LanguageSelect from './LanguageSelect';
 
 const SAVE_STATUS_DISPLAY: Record<string, { label: string; className: string }> = {
   idle: { label: '', className: '' },
@@ -152,6 +153,7 @@ const StatusBar: React.FC<StatusBarProps> = ({ editorDoc = null }) => {
         </span>
       </div>
       <div className="status-right">
+        <LanguageSelect />
         {currentAct && (
           <span className="status-item status-acts" title="Act structure">
             {currentAct}
