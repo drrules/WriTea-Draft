@@ -1711,7 +1711,7 @@ fn keep_original_copy(app: tauri::AppHandle, path: String) -> Result<Option<Stri
     Ok(Some(dest.to_string_lossy().into_owned()))
 }
 
-const OPENABLE_EXTENSIONS: &[&str] = &["fdx", "fountain", "fadein", "osf", "txt"];
+const OPENABLE_EXTENSIONS: &[&str] = &["writea", "fdx", "fountain", "fadein", "osf", "txt"];
 
 fn is_openable_file(path: &str) -> bool {
     let ext = path.rsplit('.').next().unwrap_or("");

@@ -68,20 +68,18 @@
       "deb": {
         "desktopTemplate": "linux/hidden-launcher.desktop",
         "files": {
-          "/usr/share/applications/writeadraft.desktop": "linux/writeadraft.desktop"
-        }
-      }
-    },
-    "linux": {
-      "deb": {
-        "desktopTemplate": "linux/hidden-launcher.desktop",
-        "files": {
-          "/usr/share/applications/writeadraft.desktop": "linux/writeadraft.desktop"
+          "/usr/share/applications/writeadraft.desktop": "linux/writeadraft.desktop",
+          "/usr/share/mime/packages/writeadraft.xml": "linux/writeadraft-mime.xml"
         }
       }
     },
     "category": "public.app-category.productivity",
     "fileAssociations": [
+      {
+        "ext": ["writea"],
+        "mimeType": "application/x-writea",
+        "description": "WriTea Draft Script"
+      },
       {
         "ext": ["fdx"],
         "mimeType": "application/xml",

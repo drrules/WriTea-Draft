@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="application/x-writea">
+    <comment>WriTea Draft script</comment>
+    <glob pattern="*.writea"/>
+    <sub-class-of type="application/json"/>
+  </mime-type>
+  <mime-type type="application/x-fdx">
+    <comment>Final Draft script</comment>
+    <glob pattern="*.fdx"/>
+    <sub-class-of type="application/xml"/>
+  </mime-type>
+  <mime-type type="text/x-fountain">
+    <comment>Fountain script</comment>
+    <glob pattern="*.fountain"/>
+    <sub-class-of type="text/plain"/>
+  </mime-type>
+  <mime-type type="application/x-fadein">
+    <comment>Fade In script</comment>
+    <glob pattern="*.fadein"/>
+    <sub-class-of type="application/zip"/>
+  </mime-type>
+  <mime-type type="application/x-osf">
+    <comment>Open Screenplay Format script</comment>
+    <glob pattern="*.osf"/>
+    <sub-class-of type="application/xml"/>
+  </mime-type>
+</mime-info>
