@@ -1,10 +1,25 @@
-// @ts-ignore typo-js has no type declarations
-import Typo from 'typo-js';
+// @ts-ignore nspell has no bundled type declarations
+import nspell from 'nspell';
 import { findLanguage, languageForLocale } from './languageCatalog';
 
 /** Listener invoked when the dictionary contents change (project words, global
  *  library, enabled set, languages, add-targets). Triggers an editor rescan. */
 type DictChangeListener = () => void;
+
+/** The parts of an nspell engine this file uses. */
+interface SpellEngine {
+  correct(word: string): boolean;
+  suggest(word: string): string[];
+  dictionary(dic: string): unknown;
+}
+
+/** Word-list lines fed to the engine per step. Small enough that no single
+ *  step visibly stalls the window; the largest bundled dictionary loads in
+ *  about four seconds spread over many steps. */
+const DIC_SLICE_LINES = 800;
+
+/** Give the browser a turn to paint and handle input. */
+const yieldToUi = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
 /** Special add-target id meaning "the project's private dictionary". */
 export const PROJECT_DICT_TARGET = '__project__';
@@ -44,7 +59,7 @@ function systemDefaultLanguages(): string[] {
 
 class SpellChecker {
   /** Hunspell engines keyed by language code (e.g. "en_US", "fr"). */
-  private typos: Map<string, Typo> = new Map();
+  private typos: Map<string, SpellEngine> = new Map();
   /** Labels captured for each loaded language (display only). */
   private labels: Map<string, string> = new Map();
   /** Languages currently used for checking (app-wide). */
@@ -149,7 +164,23 @@ class SpellChecker {
         console.error('SpellChecker: bundled data looks invalid for', code);
         return false;
       }
-      this.typos.set(code, new Typo(code, aff, dic));
+      // Build the engine from the affix rules, then add the word list in
+      // slices so the window stays responsive while a large language loads.
+      // Drop the COMPOUNDRULE lines: nspell builds those from the whole word
+      // list, so when the list arrives in slices they accept every word. They
+      // only exist to accept number forms such as "21st".
+      const affRules = aff
+        .split(/\r?\n/)
+        .filter((l) => !/^COMPOUNDRULE\b/.test(l))
+        .join('\n');
+      const engine = nspell(affRules) as SpellEngine;
+      const lines = dic.split(/\r?\n/);
+      for (let i = 1; i < lines.length; i += DIC_SLICE_LINES) {
+        // Each slice gets a dummy count line; nspell skips the first line.
+        engine.dictionary('0\n' + lines.slice(i, i + DIC_SLICE_LINES).join('\n'));
+        await yieldToUi();
+      }
+      this.typos.set(code, engine);
       this.labels.set(code, lang.label);
       this.emitChange();
       return true;
@@ -208,7 +239,7 @@ class SpellChecker {
       const typo = this.typos.get(code);
       if (!typo) continue;
       anyLoaded = true;
-      if (typo.check(normalized) as boolean) return true;
+      if (typo.correct(normalized)) return true;
     }
     // No enabled language has finished loading yet (still booting): don't flag.
     if (!anyLoaded) return true;
@@ -228,7 +259,7 @@ class SpellChecker {
     for (const code of this.enabledLanguages) {
       const typo = this.typos.get(code);
       if (!typo) continue;
-      const s = (typo.suggest(word, 5) as string[]) || [];
+      const s = typo.suggest(word).slice(0, 5);
       for (const w of s) {
         if (seen.has(w)) continue;
         seen.add(w);
