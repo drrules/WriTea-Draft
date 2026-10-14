@@ -10,7 +10,6 @@
  * Key differences from the old mobile-storage.ts:
  * - Script content is stored in a separate `script_content` table
  * - Versioning uses delta commits (only changed scripts stored per version)
- * - Collaboration calls the remote collab server instead of throwing
  * - Link preview uses a Tauri command (Rust-side HTTP fetch)
  */
 
@@ -26,7 +25,6 @@ import {
 } from '@tauri-apps/plugin-fs';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { appDataDir } from '@tauri-apps/api/path';
-import { getCollabWsUrl } from '../config';
 import type {
   ProjectInfo,
   ProjectProperties,
@@ -34,7 +32,6 @@ import type {
   ScriptResponse,
   VersionInfo,
   DiffResponse,
-  CollabSession,
   LinkPreview,
 } from './api';
 import { looksLikeTreatment, normalizeFormat } from '../utils/scriptFormat';
@@ -98,49 +95,6 @@ async function ensureAssetDir(projectId: string): Promise<string> {
     await mkdir(dir, { baseDir: BaseDirectory.AppData, recursive: true });
   }
   return dir;
-}
-
-/**
- * Get the HTTP base URL for the collab server API.
- * Converts ws:// → http://, wss:// → https://
- */
-function getCollabApiBase(): string {
-  const wsUrl = getCollabWsUrl();
-  return wsUrl.replace(/^ws(s?):\/\//, 'http$1://');
-}
-
-/**
- * Make an authenticated request to the collab server.
- * Uses platformFetch to bypass WebView mixed-content restrictions on Tauri.
- */
-async function collabRequest<T>(path: string, options?: RequestInit): Promise<T> {
-  const { platformFetch } = await import('./platform');
-  const { useSettingsStore } = await import('../stores/settingsStore');
-  const base = getCollabApiBase();
-  const url = `${base}${path}`;
-
-  // Include auth token if available (collab server requires it for write operations)
-  const { collabAuth } = useSettingsStore.getState();
-  const authHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (collabAuth.accessToken) {
-    authHeaders['Authorization'] = `Bearer ${collabAuth.accessToken}`;
-  }
-
-  console.log(`[collabRequest] ${options?.method || 'GET'} ${url}`);
-  const res = await platformFetch(url, {
-    ...options,
-    headers: { ...authHeaders, ...options?.headers },
-  });
-  if (!res.ok) {
-    const detail = await res.text().catch(() => '');
-    console.error(`[collabRequest] ${url} → ${res.status}: ${detail}`);
-    // Clear stale auth on 401 so the UI prompts for re-login
-    if (res.status === 401) {
-      useSettingsStore.getState().clearCollabAuth();
-    }
-    throw new Error(`Collab API error ${res.status}: ${detail}`);
-  }
-  return res.json();
 }
 
 /**
@@ -748,45 +702,6 @@ export async function createLocalStorage() {
       );
 
       return rows.length > 0 ? (rows[0].content || '') : '';
-    },
-
-    // ── Collaboration (via remote collab server) ──────────────────────────
-
-    async createCollabInvite(
-      projectId: string,
-      scriptId: string,
-      collaboratorName: string,
-      role: string = 'editor',
-      expiresInHours: number = 1,
-      sessionNonce: string = '',
-    ): Promise<CollabSession> {
-      return collabRequest<CollabSession>('/api/collab/invite', {
-        method: 'POST',
-        body: JSON.stringify({
-          project_id: projectId,
-          script_id: scriptId,
-          collaborator_name: collaboratorName,
-          role,
-          expires_in_hours: expiresInHours,
-          session_nonce: sessionNonce,
-        }),
-      });
-    },
-
-    async validateCollabSession(token: string): Promise<CollabSession> {
-      return collabRequest<CollabSession>(`/api/collab/session/${token}`);
-    },
-
-    async listCollabSessions(projectId: string, scriptId: string): Promise<CollabSession[]> {
-      return collabRequest<CollabSession[]>(`/api/collab/sessions/${projectId}/${scriptId}`);
-    },
-
-    async revokeCollabSession(token: string): Promise<{ message: string }> {
-      return collabRequest<{ message: string }>(`/api/collab/session/${token}`, { method: 'DELETE' });
-    },
-
-    async revokeAllCollabSessions(projectId: string, scriptId: string): Promise<{ message: string }> {
-      return collabRequest<{ message: string }>(`/api/collab/sessions/${projectId}/${scriptId}`, { method: 'DELETE' });
     },
 
     // ── Assets ─────────────────────────────────────────────────────────────

@@ -204,8 +204,6 @@ function osfExtras(s: ReturnType<typeof useEditorStore.getState>) {
 
 interface MenuBarProps {
   editor: Editor | null;
-  onCollaborate?: () => void;
-  onJoinCollab?: () => void;
   /** Serverless live co-editing (Tools ▸ Live Co-editing). */
   onLiveHost?: () => void;
   onLiveJoin?: () => void;

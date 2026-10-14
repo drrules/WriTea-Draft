@@ -36,7 +36,6 @@ import type {
   ScriptResponse,
   VersionInfo,
   DiffResponse,
-  CollabSession,
   LinkPreview,
   DemoInfo,
 } from './api';
@@ -482,18 +481,6 @@ export async function createFileFallbackStorage() {
     restoreVersion: async (): Promise<VersionInfo> => {
       throw new Error('Versioning is not available in file-fallback mode');
     },
-
-    // ── Collaboration (network-only) ─────────────────────────────────
-
-    createCollabInvite: async (): Promise<CollabSession> => {
-      throw new Error('Collaboration requires the SQLite-backed storage');
-    },
-    validateCollabSession: async (): Promise<CollabSession> => {
-      throw new Error('Collaboration requires the SQLite-backed storage');
-    },
-    listCollabSessions: async (): Promise<CollabSession[]> => [],
-    revokeCollabSession: async (): Promise<{ message: string }> => ({ message: 'ok' }),
-    revokeAllCollabSessions: async (): Promise<{ message: string }> => ({ message: 'ok' }),
 
     // ── Assets ────────────────────────────────────────────────────────
 

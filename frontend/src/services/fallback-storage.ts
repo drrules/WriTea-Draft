@@ -19,7 +19,6 @@ import type {
   ScriptResponse,
   VersionInfo,
   DiffResponse,
-  CollabSession,
   LinkPreview,
   DemoInfo,
 } from './api';
@@ -252,14 +251,6 @@ export function createFallbackStorage() {
     getVersionDiff: async (): Promise<DiffResponse> => ({ diff: '', from_hash: '', to_hash: '' }),
     getScriptAtVersion: async (): Promise<ScriptResponse> => { throw new Error('Not available in fallback mode'); },
     restoreVersion: async (): Promise<VersionInfo> => { throw new Error('Not available in fallback mode'); },
-
-    // ── Collaboration (pass-through — still works via HTTP) ──────────
-
-    createCollabInvite: async (): Promise<CollabSession> => { throw new Error('Collaboration requires network access'); },
-    validateCollabSession: async (): Promise<CollabSession> => { throw new Error('Not available'); },
-    listCollabSessions: async (): Promise<CollabSession[]> => [],
-    revokeCollabSession: async (): Promise<{ message: string }> => ({ message: 'ok' }),
-    revokeAllCollabSessions: async (): Promise<{ message: string }> => ({ message: 'ok' }),
 
     // ── Assets (not supported in fallback) ───────────────────────────
 

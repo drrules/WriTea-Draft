@@ -1,5 +1,4 @@
-import { getApiBase, getCollabWsUrl } from '../config';
-import { useSettingsStore } from '../stores/settingsStore';
+import { getApiBase } from '../config';
 import { authedFetch } from './authedFetch';
 
 /**
@@ -62,9 +61,6 @@ export async function handleNonOkResponse(res: Response, label: string): Promise
   let handled = false;
 
   if (res.status === 401) {
-    // authedFetch has already cleared auth if refresh failed; ensure it's
-    // cleared for the no-refresh-token path too.
-    useSettingsStore.getState().clearCollabAuth();
     dispatchApiEvent('writeadraft:auth-required');
     handled = true;
   } else if (res.status === 403) {
@@ -96,18 +92,6 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   };
   const res = await authedFetch(`${getApiBase()}${path}`, { ...options, headers });
   if (!res.ok) await handleNonOkResponse(res, 'API');
-  return res.json();
-}
-
-/** Authenticated request to the collab server (not the Python backend). */
-async function collabServerRequest<T>(path: string, options?: RequestInit): Promise<T> {
-  const base = getCollabWsUrl().replace(/^ws(s?):\/\//, 'http$1://');
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    ...(options?.headers as Record<string, string>),
-  };
-  const res = await authedFetch(`${base}${path}`, { ...options, headers });
-  if (!res.ok) await handleNonOkResponse(res, 'Collab API');
   return res.json();
 }
 
@@ -209,18 +193,6 @@ export interface DiffResponse {
   diff: string;
   from_hash: string;
   to_hash: string;
-}
-
-export interface CollabSession {
-  token: string;
-  project_id: string;
-  script_id: string;
-  collaborator_name: string;
-  role: string;
-  created_at: string;
-  expires_at: string;
-  active: boolean;
-  session_nonce?: string;
 }
 
 // ── API methods ──────────────────────────────────────────────────────────────
@@ -337,25 +309,6 @@ export const api = {
     request<VersionInfo>(`/projects/${projectId}/versions/restore/${hash}`, {
       method: 'POST',
     }),
-
-  // Collaboration (routed to collab server, not Python backend)
-  createCollabInvite: (projectId: string, scriptId: string, collaboratorName: string, role: string = 'editor', expiresInHours: number = 1, sessionNonce: string = '') =>
-    collabServerRequest<CollabSession>('/api/collab/invite', {
-      method: 'POST',
-      body: JSON.stringify({ project_id: projectId, script_id: scriptId, collaborator_name: collaboratorName, role, expires_in_hours: expiresInHours, session_nonce: sessionNonce }),
-    }),
-
-  validateCollabSession: (token: string) =>
-    collabServerRequest<CollabSession>(`/api/collab/session/${token}`),
-
-  listCollabSessions: (projectId: string, scriptId: string) =>
-    collabServerRequest<CollabSession[]>(`/api/collab/sessions/${projectId}/${scriptId}`),
-
-  revokeCollabSession: (token: string) =>
-    collabServerRequest<{ message: string }>(`/api/collab/session/${token}`, { method: 'DELETE' }),
-
-  revokeAllCollabSessions: (projectId: string, scriptId: string) =>
-    collabServerRequest<{ message: string }>(`/api/collab/sessions/${projectId}/${scriptId}`, { method: 'DELETE' }),
 
   // Assets
   listAssets: async (projectId: string): Promise<any[]> => {
