@@ -1,6 +1,5 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import ScreenplayEditor from './components/ScreenplayEditor';
-import TreatmentEditor from './components/TreatmentEditor';
 import SettingsPage from './components/SettingsPage';
 import Toast from './components/Toast';
 import StorageFallbackDialog from './components/StorageFallbackDialog';
@@ -28,7 +27,6 @@ function App() {
         <Route path="/projects" element={<Navigate to="/" replace />} />
         <Route path="/project/:projectId" element={<Navigate to="/" replace />} />
         <Route path="/project/:projectId/edit/:scriptId" element={<ScreenplayEditor />} />
-        <Route path="/project/:projectId/treatment/:scriptId" element={<TreatmentEditor />} />
         <Route path="/project/:projectId/history/:scriptId/:commitHash" element={<ScreenplayEditor />} />
         <Route path="/settings" element={<SettingsPageC />} />
         {pluginRoutes.map((r) => (
