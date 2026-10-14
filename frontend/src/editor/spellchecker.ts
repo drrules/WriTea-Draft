@@ -1,5 +1,6 @@
-// @ts-ignore — typo-js has no type declarations
+// @ts-ignore typo-js has no type declarations
 import Typo from 'typo-js';
+import { findLanguage, languageForLocale } from './languageCatalog';
 
 /** Listener invoked when the dictionary contents change (project words, global
  *  library, enabled set, languages, add-targets). Triggers an editor rescan. */
@@ -8,113 +9,48 @@ type DictChangeListener = () => void;
 /** Special add-target id meaning "the project's private dictionary". */
 export const PROJECT_DICT_TARGET = '__project__';
 
-/** Storage key for downloaded dictionary blobs (IndexedDB object store). */
-const DICT_DB_NAME = 'writeadraft-dictionaries';
-const DICT_STORE = 'languages';
-const DICT_DB_VERSION = 1;
-
-interface StoredLanguageBlob {
-  code: string;
-  aff: string;
-  dic: string;
-  // human-readable label captured at install time (e.g. "Hindi")
-  label?: string;
-  // jsdelivr/wooorm npm package this came from, if any
-  source?: string;
-}
-
-/** Minimal IndexedDB helper for storing downloaded .aff/.dic. Stays internal. */
-async function openDictDB(): Promise<IDBDatabase | null> {
-  if (typeof indexedDB === 'undefined') return null;
-  return new Promise((resolve) => {
-    try {
-      const req = indexedDB.open(DICT_DB_NAME, DICT_DB_VERSION);
-      req.onupgradeneeded = () => {
-        const db = req.result;
-        if (!db.objectStoreNames.contains(DICT_STORE)) {
-          db.createObjectStore(DICT_STORE, { keyPath: 'code' });
-        }
-      };
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => resolve(null);
-    } catch {
-      resolve(null);
-    }
-  });
-}
-
-async function dbGet(code: string): Promise<StoredLanguageBlob | null> {
-  const db = await openDictDB();
-  if (!db) return null;
-  return new Promise((resolve) => {
-    try {
-      const tx = db.transaction(DICT_STORE, 'readonly');
-      const req = tx.objectStore(DICT_STORE).get(code);
-      req.onsuccess = () => resolve((req.result as StoredLanguageBlob) || null);
-      req.onerror = () => resolve(null);
-    } catch {
-      resolve(null);
-    }
-  });
-}
-
-async function dbPut(blob: StoredLanguageBlob): Promise<void> {
-  const db = await openDictDB();
-  if (!db) return;
-  await new Promise<void>((resolve) => {
-    try {
-      const tx = db.transaction(DICT_STORE, 'readwrite');
-      tx.objectStore(DICT_STORE).put(blob);
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => resolve();
-    } catch {
-      resolve();
-    }
-  });
-}
-
-async function dbDelete(code: string): Promise<void> {
-  const db = await openDictDB();
-  if (!db) return;
-  await new Promise<void>((resolve) => {
-    try {
-      const tx = db.transaction(DICT_STORE, 'readwrite');
-      tx.objectStore(DICT_STORE).delete(code);
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => resolve();
-    } catch {
-      resolve();
-    }
-  });
-}
-
-async function dbList(): Promise<StoredLanguageBlob[]> {
-  const db = await openDictDB();
-  if (!db) return [];
-  return new Promise((resolve) => {
-    try {
-      const tx = db.transaction(DICT_STORE, 'readonly');
-      const req = tx.objectStore(DICT_STORE).getAll();
-      req.onsuccess = () => resolve((req.result as StoredLanguageBlob[]) || []);
-      req.onerror = () => resolve([]);
-    } catch {
-      resolve([]);
-    }
-  });
-}
-
-/** Built-in language always available (bundled in /public/dictionaries/). */
+/** Base language. Always loaded first so the checker keeps working while any
+ *  other enabled language is still loading. Bundled in /public/dictionaries/. */
 export const BUILTIN_LANGUAGE = 'en_US';
 
+/** App-wide choice of spell-check languages (not stored per script). */
+const ENABLED_LANGS_KEY = 'writeadraft:enabledLanguages';
+
+function readStoredLanguages(): string[] | null {
+  try {
+    const raw = localStorage.getItem(ENABLED_LANGS_KEY);
+    if (!raw) return null;
+    const arr = JSON.parse(raw);
+    if (!Array.isArray(arr)) return null;
+    const codes = arr.filter((c): c is string => typeof c === 'string' && !!findLanguage(c));
+    return codes.length > 0 ? codes : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Remember the user's language choice for the whole app. */
+export function saveEnabledLanguagePreference(codes: string[]): void {
+  try {
+    localStorage.setItem(ENABLED_LANGS_KEY, JSON.stringify(codes));
+  } catch { /* noop */ }
+}
+
+/** Default when nothing is saved yet: the system language, if bundled. */
+function systemDefaultLanguages(): string[] {
+  const tag = typeof navigator !== 'undefined' ? navigator.language : undefined;
+  return [languageForLocale(tag)];
+}
+
 class SpellChecker {
-  /** Hunspell engines keyed by language code (e.g. "en_US", "hi"). */
+  /** Hunspell engines keyed by language code (e.g. "en_US", "fr"). */
   private typos: Map<string, Typo> = new Map();
   /** Labels captured for each loaded language (display only). */
   private labels: Map<string, string> = new Map();
-  /** Languages active for the current document (set per-script). */
+  /** Languages currently used for checking (app-wide). */
   private enabledLanguages: Set<string> = new Set([BUILTIN_LANGUAGE]);
 
-  /** Words the user added via "Add to dictionary" — per-project, saved with the script. */
+  /** Words the user added via "Add to dictionary", saved with the script. */
   private projectWords: Set<string> = new Set();
   /** When false, project words are skipped during checks (per-script toggle). */
   private projectDictionaryEnabled: boolean = true;
@@ -146,29 +82,15 @@ class SpellChecker {
   }
 
   private async _doInit(): Promise<void> {
-    const ok = await this.loadLanguage(BUILTIN_LANGUAGE, { label: 'English (US)' });
+    const ok = await this.loadLanguage(BUILTIN_LANGUAGE);
     if (!ok) {
       console.error('SpellChecker: failed to load built-in language', BUILTIN_LANGUAGE);
       return;
     }
     this.ready = true;
-
-    // Re-hydrate any languages the user had previously installed via download.
-    try {
-      const installed = await dbList();
-      for (const blob of installed) {
-        if (blob.code === BUILTIN_LANGUAGE) continue;
-        try {
-          this.typos.set(blob.code, new Typo(blob.code, blob.aff, blob.dic));
-          if (blob.label) this.labels.set(blob.code, blob.label);
-        } catch (err) {
-          console.warn('SpellChecker: failed to instantiate cached language', blob.code, err);
-        }
-      }
-      this.emitChange();
-    } catch (err) {
-      console.warn('SpellChecker: could not re-hydrate installed languages', err);
-    }
+    // Apply the app-wide language choice (the system language by default).
+    // Any language other than the built-in one starts loading here.
+    this.setEnabledLanguages(readStoredLanguages() ?? systemDefaultLanguages());
   }
 
   /** Wait for initialization to complete (if in progress). */
@@ -187,16 +109,12 @@ class SpellChecker {
   // ─────────────────────────────────────────────────────────────────────────
   // Language loading
 
-  /** Load a language. Tries bundled `/dictionaries/<code>.aff/.dic` first,
-   *  then IndexedDB cache, then jsdelivr (wooorm/dictionaries). */
-  async loadLanguage(
-    code: string,
-    opts?: { affUrl?: string; dicUrl?: string; label?: string; persist?: boolean },
-  ): Promise<boolean> {
+  /** Load a bundled language from /dictionaries/<file>.aff and .dic. */
+  async loadLanguage(code: string): Promise<boolean> {
     if (this.typos.has(code)) return true;
     const existing = this.loadPromises.get(code);
     if (existing) return existing;
-    const p = this._doLoadLanguage(code, opts);
+    const p = this._doLoadLanguage(code);
     this.loadPromises.set(code, p);
     try {
       return await p;
@@ -205,97 +123,40 @@ class SpellChecker {
     }
   }
 
-  private async _doLoadLanguage(
-    code: string,
-    opts?: { affUrl?: string; dicUrl?: string; label?: string; persist?: boolean },
-  ): Promise<boolean> {
-    // 1. Try bundled first for the built-in language.
-    if (code === BUILTIN_LANGUAGE) {
-      try {
-        let [aff, dic] = await Promise.all([
-          fetch('/dictionaries/en_US.aff').then((r) => (r.ok ? r.text() : null)),
-          fetch('/dictionaries/en_US.dic').then((r) => (r.ok ? r.text() : null)),
-        ]);
-        if (aff && dic) {
-          if (aff.charCodeAt(0) === 0xfeff) aff = aff.slice(1);
-          if (dic.charCodeAt(0) === 0xfeff) dic = dic.slice(1);
-          const affHead = aff.split(/\r?\n/, 30).join('\n');
-          if (/(^|\n)SET\s/.test(affHead) && /^\d+/.test(dic.trimStart())) {
-            this.typos.set(code, new Typo(code, aff, dic));
-            if (opts?.label) this.labels.set(code, opts.label);
-            else this.labels.set(code, 'English (US)');
-            this.emitChange();
-            return true;
-          }
-        }
-      } catch (err) {
-        console.warn('SpellChecker: bundled load failed for', code, err);
-      }
+  private async _doLoadLanguage(code: string): Promise<boolean> {
+    const lang = findLanguage(code);
+    if (!lang) {
+      console.warn('SpellChecker: unknown language', code);
+      return false;
     }
-
-    // 2. Try IndexedDB cache.
     try {
-      const cached = await dbGet(code);
-      if (cached && cached.aff && cached.dic) {
-        this.typos.set(code, new Typo(code, cached.aff, cached.dic));
-        if (cached.label) this.labels.set(code, cached.label);
-        else if (opts?.label) this.labels.set(code, opts.label);
-        this.emitChange();
-        return true;
-      }
-    } catch (err) {
-      console.warn('SpellChecker: cache lookup failed for', code, err);
-    }
-
-    // 3. Network download (jsdelivr by default).
-    const affUrl = opts?.affUrl;
-    const dicUrl = opts?.dicUrl;
-    if (!affUrl || !dicUrl) return false;
-    try {
-      const [affRes, dicRes] = await Promise.all([fetch(affUrl), fetch(dicUrl)]);
-      if (!affRes.ok || !dicRes.ok) {
-        console.error('SpellChecker: download failed for', code,
-          'aff:', affRes.status, 'dic:', dicRes.status);
+      let [aff, dic] = await Promise.all([
+        fetch(`/dictionaries/${lang.file}.aff`).then((r) => (r.ok ? r.text() : null)),
+        fetch(`/dictionaries/${lang.file}.dic`).then((r) => (r.ok ? r.text() : null)),
+      ]);
+      if (!aff || !dic) {
+        console.error('SpellChecker: bundled files missing for', code);
         return false;
       }
-      let [aff, dic] = await Promise.all([affRes.text(), dicRes.text()]);
-      // Some upstream files (notably LibreOffice's Indian-language .aff files)
-      // ship a UTF-8 BOM. response.text() usually strips it, but not always —
-      // strip defensively so the SET-line validation and typo-js parser don't
-      // trip on a leading ﻿.
+      // Strip a UTF-8 BOM if one is present.
       if (aff.charCodeAt(0) === 0xfeff) aff = aff.slice(1);
       if (dic.charCodeAt(0) === 0xfeff) dic = dic.slice(1);
-      // Sanity check: the .aff should contain a SET line somewhere near the top
-      // (preceded only by comments / blank lines / other directives), and the
-      // .dic must start with the word-count line. This catches HTML 404 pages
-      // without rejecting files that lead with a comment block.
+      // Sanity check: the .aff needs a SET line near the top and the .dic
+      // must start with its word count. Catches an HTML error page being
+      // served in place of the file.
       const affHead = aff.split(/\r?\n/, 30).join('\n');
       if (!/(^|\n)SET\s/.test(affHead) || !/^\d+/.test(dic.trimStart())) {
-        console.error('SpellChecker: downloaded data looks invalid for', code);
+        console.error('SpellChecker: bundled data looks invalid for', code);
         return false;
       }
       this.typos.set(code, new Typo(code, aff, dic));
-      if (opts?.label) this.labels.set(code, opts.label);
-      // Persist to IndexedDB so future sessions don't re-download.
-      if (opts?.persist !== false) {
-        await dbPut({ code, aff, dic, label: opts?.label, source: 'jsdelivr' });
-      }
+      this.labels.set(code, lang.label);
       this.emitChange();
       return true;
     } catch (err) {
-      console.error('SpellChecker: download error for', code, err);
+      console.error('SpellChecker: failed to load', code, err);
       return false;
     }
-  }
-
-  /** Remove a downloaded language. The built-in language can't be removed. */
-  async unloadLanguage(code: string): Promise<void> {
-    if (code === BUILTIN_LANGUAGE) return;
-    this.typos.delete(code);
-    this.labels.delete(code);
-    this.enabledLanguages.delete(code);
-    await dbDelete(code);
-    this.emitChange();
   }
 
   getLoadedLanguages(): { code: string; label: string }[] {
@@ -310,19 +171,19 @@ class SpellChecker {
   }
 
   setEnabledLanguages(codes: string[]): void {
-    // Accept codes even if their dictionary isn't loaded *yet* — re-hydration
-    // from IndexedDB is async and can finish after a script's persisted
-    // enabled-languages list has been applied. The check() loop already skips
-    // codes whose typo isn't present, so storing them is safe and lets the
-    // dictionary become live as soon as it finishes loading. Filtering here
-    // silently dropped non-English languages on script load, which caused
-    // every word in those languages to be flagged as misspelled.
     this.enabledLanguages.clear();
     for (const c of codes) {
-      this.enabledLanguages.add(c);
+      if (findLanguage(c)) this.enabledLanguages.add(c);
     }
     if (this.enabledLanguages.size === 0) {
-      this.enabledLanguages.add(BUILTIN_LANGUAGE);
+      for (const c of systemDefaultLanguages()) this.enabledLanguages.add(c);
+    }
+    // Start loading any enabled language that is not loaded yet. A change
+    // event fires as each one arrives, which rescans the document.
+    if (this.ready) {
+      for (const c of this.enabledLanguages) {
+        if (!this.typos.has(c)) void this.loadLanguage(c);
+      }
     }
     this.emitChange();
   }
@@ -342,12 +203,15 @@ class SpellChecker {
       const dict = this.globalDicts.get(name);
       if (dict && dict.has(lower)) return true;
     }
+    let anyLoaded = false;
     for (const code of this.enabledLanguages) {
       const typo = this.typos.get(code);
-      if (typo && (typo.check(normalized) as boolean)) return true;
+      if (!typo) continue;
+      anyLoaded = true;
+      if (typo.check(normalized) as boolean) return true;
     }
-    // If no language is loaded at all (still booting), don't flag.
-    if (this.typos.size === 0) return true;
+    // No enabled language has finished loading yet (still booting): don't flag.
+    if (!anyLoaded) return true;
     return false;
   }
 

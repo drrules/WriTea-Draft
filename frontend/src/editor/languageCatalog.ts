@@ -1,121 +1,44 @@
-/** Catalog of languages users can install. Entries come from two sources:
- *
- *  - jsdelivr (wooorm/dictionaries): most European languages.
- *  - LibreOffice/dictionaries (raw.githubusercontent.com): the Indian language
- *    set (Hindi, Tamil, Telugu, etc.), Arabic, and a few others not in wooorm.
- *
- *  The installer also accepts arbitrary URLs via a "Custom URL…" entry. */
+/** Spell-check languages bundled inside the app. Each one is a Hunspell
+ *  .aff/.dic pair under public/dictionaries/, loaded on demand when it is
+ *  enabled. Nothing is ever downloaded. The licence notice for each
+ *  dictionary sits beside its files as <file>.LICENSE.txt. */
 
-export interface CatalogLanguage {
+export interface BundledLanguage {
   /** Internal code (becomes the spell-checker language id). */
   code: string;
-  /** User-facing label, e.g. "Hindi (हिन्दी)". */
+  /** User-facing label. */
   label: string;
-  /** Native script sample (for the picker). */
+  /** Basename of the .aff/.dic pair under /dictionaries/. */
+  file: string;
+  /** Short alphabet sample for the picker. */
   sample?: string;
-  /** Where to download from. */
-  source:
-    | { kind: 'jsdelivr'; npm: string }
-    | { kind: 'libreoffice'; folder: string; baseName?: string }
-    /** Hunspell files committed to this repo under `dictionaries-extra/<path>/`
-     *  and served via jsDelivr's GitHub CDN. Used for languages where the
-     *  upstream LibreOffice / wooorm dictionary is too small or unavailable
-     *  (e.g. Odia — LibreOffice ships 1k words; we ship a 320k-word list
-     *  derived from the MPL-2.0 Odia Spelling Checker Firefox add-on). */
-    | { kind: 'writeadraft-extra'; path: string };
 }
 
-/** Built-in language always available; not downloadable. */
-export const BUILTIN: CatalogLanguage = {
-  code: 'en_US',
-  label: 'English (US)',
-  source: { kind: 'jsdelivr', npm: 'dictionary-en-us' },
-  sample: 'Aa',
-};
-
-/** Languages the user can install. */
-export const CATALOG: CatalogLanguage[] = [
-  // English variants (wooorm)
-  { code: 'en_GB', label: 'English (UK)', source: { kind: 'jsdelivr', npm: 'dictionary-en-gb' }, sample: 'Aa' },
-  { code: 'en_AU', label: 'English (Australia)', source: { kind: 'jsdelivr', npm: 'dictionary-en-au' }, sample: 'Aa' },
-  { code: 'en_CA', label: 'English (Canada)', source: { kind: 'jsdelivr', npm: 'dictionary-en-ca' }, sample: 'Aa' },
-
-  // Indic languages (LibreOffice)
-  { code: 'hi_IN', label: 'Hindi (हिन्दी)', source: { kind: 'libreoffice', folder: 'hi_IN' }, sample: 'क ख' },
-  { code: 'mr_IN', label: 'Marathi (मराठी)', source: { kind: 'libreoffice', folder: 'mr_IN' }, sample: 'क ख' },
-  { code: 'gu_IN', label: 'Gujarati (ગુજરાતી)', source: { kind: 'libreoffice', folder: 'gu_IN' }, sample: 'ક ખ' },
-  { code: 'bn_BD', label: 'Bengali (বাংলা)', source: { kind: 'libreoffice', folder: 'bn_BD' }, sample: 'ক খ' },
-  { code: 'ta_IN', label: 'Tamil (தமிழ்)', source: { kind: 'libreoffice', folder: 'ta_IN' }, sample: 'அ ஆ' },
-  { code: 'te_IN', label: 'Telugu (తెలుగు)', source: { kind: 'libreoffice', folder: 'te_IN' }, sample: 'అ ఆ' },
-  { code: 'kn_IN', label: 'Kannada (ಕನ್ನಡ)', source: { kind: 'libreoffice', folder: 'kn_IN' }, sample: 'ಅ ಆ' },
-  { code: 'pa_IN', label: 'Punjabi (ਪੰਜਾਬੀ)', source: { kind: 'libreoffice', folder: 'pa_IN' }, sample: 'ੳ ਅ' },
-  // LibreOffice's or_IN ships only ~1k words, so basic Odia gets flagged as
-  // misspelled. We use a 320k-word list derived from the Odia Wikipedians'
-  // Firefox add-on (MPL-2.0). See dictionaries-extra/or_IN/NOTICE.md.
-  { code: 'or_IN', label: 'Odia (ଓଡ଼ିଆ)', source: { kind: 'writeadraft-extra', path: 'or_IN' }, sample: 'ଅ ଆ' },
-  { code: 'as_IN', label: 'Assamese (অসমীয়া)', source: { kind: 'libreoffice', folder: 'as_IN' }, sample: 'অ আ' },
-  { code: 'ne_NP', label: 'Nepali (नेपाली)', source: { kind: 'libreoffice', folder: 'ne_NP' }, sample: 'क ख' },
-  { code: 'si_LK', label: 'Sinhala (සිංහල)', source: { kind: 'libreoffice', folder: 'si_LK' }, sample: 'අ ආ' },
-
-  // European (wooorm)
-  { code: 'fr', label: 'French (Français)', source: { kind: 'jsdelivr', npm: 'dictionary-fr' }, sample: 'Àà' },
-  { code: 'de', label: 'German (Deutsch)', source: { kind: 'jsdelivr', npm: 'dictionary-de' }, sample: 'Ää' },
-  { code: 'es', label: 'Spanish (Español)', source: { kind: 'jsdelivr', npm: 'dictionary-es' }, sample: 'Ññ' },
-  { code: 'it', label: 'Italian (Italiano)', source: { kind: 'jsdelivr', npm: 'dictionary-it' }, sample: 'Èè' },
-  { code: 'pt', label: 'Portuguese', source: { kind: 'jsdelivr', npm: 'dictionary-pt' }, sample: 'Ãã' },
-  { code: 'pt_BR', label: 'Portuguese (Brazil)', source: { kind: 'jsdelivr', npm: 'dictionary-pt-br' }, sample: 'Ãã' },
-  { code: 'pt_PT', label: 'Portuguese (Portugal)', source: { kind: 'jsdelivr', npm: 'dictionary-pt-pt' }, sample: 'Ãã' },
-  { code: 'nl', label: 'Dutch (Nederlands)', source: { kind: 'jsdelivr', npm: 'dictionary-nl' }, sample: 'Ïï' },
-  { code: 'ru', label: 'Russian (Русский)', source: { kind: 'jsdelivr', npm: 'dictionary-ru' }, sample: 'Аа' },
-  { code: 'pl', label: 'Polish (Polski)', source: { kind: 'jsdelivr', npm: 'dictionary-pl' }, sample: 'Łł' },
-  { code: 'tr', label: 'Turkish (Türkçe)', source: { kind: 'jsdelivr', npm: 'dictionary-tr' }, sample: 'Şş' },
-
-  // Other (LibreOffice for Arabic; wooorm for the rest)
-  { code: 'ar', label: 'Arabic (العربية)', source: { kind: 'libreoffice', folder: 'ar' }, sample: 'ا ب' },
-  { code: 'fa', label: 'Persian (فارسی)', source: { kind: 'jsdelivr', npm: 'dictionary-fa' }, sample: 'ا ب' },
-  { code: 'he', label: 'Hebrew (עברית)', source: { kind: 'jsdelivr', npm: 'dictionary-he' }, sample: 'א ב' },
+export const BUNDLED_LANGUAGES: BundledLanguage[] = [
+  { code: 'en_US', label: 'English (US)', file: 'en_US', sample: 'Aa' },
+  { code: 'en_CA', label: 'English (Canada)', file: 'en_CA', sample: 'Aa' },
+  { code: 'fr', label: 'French (Français)', file: 'fr', sample: 'Àà' },
+  { code: 'es', label: 'Spanish (Español)', file: 'es_ES', sample: 'Ññ' },
 ];
 
-const ALL_BY_CODE = new Map<string, CatalogLanguage>(
-  [BUILTIN, ...CATALOG].map((l) => [l.code, l]),
+/** Always loaded first, so the checker has a working language while any
+ *  other enabled language is still loading. */
+export const BUILTIN: BundledLanguage = BUNDLED_LANGUAGES[0];
+
+const BY_CODE = new Map<string, BundledLanguage>(
+  BUNDLED_LANGUAGES.map((l) => [l.code, l]),
 );
 
-export function findLanguage(code: string): CatalogLanguage | undefined {
-  return ALL_BY_CODE.get(code);
+export function findLanguage(code: string): BundledLanguage | undefined {
+  return BY_CODE.get(code);
 }
 
-/** GitHub repo that hosts the `dictionaries-extra/` folder consumed by the
- *  `writeadraft-extra` source kind. Pinned to `main` — jsDelivr caches a single
- *  ref aggressively, so users won't re-download on every release. */
-const WRITEADRAFT_EXTRA_BASE =
-  'https://cdn.jsdelivr.net/gh/Proteus-Technologies-Private-Limited/OpenDraft@main/dictionaries-extra';
-
-/** Build .aff/.dic download URLs for a catalog entry. */
-export function urlsFor(lang: CatalogLanguage): { aff: string; dic: string } {
-  if (lang.source.kind === 'jsdelivr') {
-    return {
-      aff: `https://cdn.jsdelivr.net/npm/${lang.source.npm}/index.aff`,
-      dic: `https://cdn.jsdelivr.net/npm/${lang.source.npm}/index.dic`,
-    };
-  }
-  if (lang.source.kind === 'writeadraft-extra') {
-    const dir = lang.source.path;
-    // The on-disk files use the language code as their basename.
-    return {
-      aff: `${WRITEADRAFT_EXTRA_BASE}/${dir}/${lang.code}.aff`,
-      dic: `${WRITEADRAFT_EXTRA_BASE}/${dir}/${lang.code}.dic`,
-    };
-  }
-  const { folder, baseName } = lang.source;
-  const name = baseName || folder;
-  const base = `https://raw.githubusercontent.com/LibreOffice/dictionaries/master/${folder}/${name}`;
-  return { aff: `${base}.aff`, dic: `${base}.dic` };
-}
-
-/** @deprecated use urlsFor(lang) — kept for back-compat with earlier imports. */
-export function jsdelivrUrls(npm: string): { aff: string; dic: string } {
-  return {
-    aff: `https://cdn.jsdelivr.net/npm/${npm}/index.aff`,
-    dic: `https://cdn.jsdelivr.net/npm/${npm}/index.dic`,
-  };
+/** Pick the bundled language that best matches a system locale tag such as
+ *  "en-CA" or "fr_FR". Anything unrecognised falls back to English (US). */
+export function languageForLocale(tag: string | null | undefined): string {
+  const t = (tag || '').toLowerCase().replace('_', '-');
+  if (t === 'en-ca') return 'en_CA';
+  if (t === 'fr' || t.startsWith('fr-')) return 'fr';
+  if (t === 'es' || t.startsWith('es-')) return 'es';
+  return 'en_US';
 }

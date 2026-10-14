@@ -99,7 +99,7 @@ import { ELEMENT_MENU_EVENT } from '../utils/elementMenu';
 import { matchesShortcut } from '../utils/shortcuts';
 import { SpellCheck, spellCheckPluginKey } from '../editor/extensions/SpellCheck';
 import { Grammar, grammarPluginKey } from '../editor/extensions/Grammar';
-import { spellChecker, BUILTIN_LANGUAGE } from '../editor/spellchecker';
+import { spellChecker } from '../editor/spellchecker';
 import { grammarIgnore } from '../editor/grammar/grammarIgnore';
 import { buildSaveContent as buildSaveContentShared, stripSaveMetadata } from '../utils/saveContent';
 import { hydrateEditorStoresFromContent } from '../utils/hydrateStores';
@@ -2934,11 +2934,6 @@ const ScreenplayEditor: React.FC = () => {
             spellChecker.setProjectDictionaryEnabled(
               typeof c._projectDictEnabled === 'boolean' ? c._projectDictEnabled : true,
             );
-            // Per-script enabled-languages. Default to built-in only.
-            const langs = parseAttr(c._enabledLanguages);
-            spellChecker.setEnabledLanguages(
-              langs.length > 0 ? (langs as string[]) : [BUILTIN_LANGUAGE],
-            );
             // Restore per-document ignored grammar rules / occurrences
             const grammarRules = parseAttr(c._ignoredGrammarRules);
             grammarIgnore.setIgnoredRules(grammarRules as string[]);
@@ -3402,11 +3397,6 @@ const ScreenplayEditor: React.FC = () => {
           // Per-script project-dictionary toggle (default on).
           spellChecker.setProjectDictionaryEnabled(
             typeof c._projectDictEnabled === 'boolean' ? c._projectDictEnabled : true,
-          );
-          // Per-script enabled-languages (default: built-in only).
-          const langs2 = parseAttr2(c._enabledLanguages);
-          spellChecker.setEnabledLanguages(
-            langs2.length > 0 ? (langs2 as string[]) : [BUILTIN_LANGUAGE],
           );
           // Enabled global dictionaries.
           if (c._enabledGlobalDicts === undefined) {

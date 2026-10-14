@@ -4,7 +4,6 @@ import { applyAppearance, applyNativeTheme, readAppearance, saveAppearance, them
 import { DEFAULT_SCRIPT_PROFILE, normalizeScriptProfile, type ScriptProfile } from '../utils/scriptProfile';
 import { DEFAULT_REVISION_COLOR, DEFAULT_REVISION_SETTINGS, nextRevisionColor, type RevisionSettings } from '../editor/revisionColors';
 import { spellChecker, PROJECT_DICT_TARGET } from '../editor/spellchecker';
-import { findLanguage, urlsFor } from '../editor/languageCatalog';
 import {
   NOTE_NUMBER_FORMATS,
   type NoteNumberFormat,
@@ -153,23 +152,6 @@ function saveAddTargets(targets: string[]) {
 }
 const _initialAddTargets = loadAddTargets();
 spellChecker.setAddTargets(_initialAddTargets);
-
-// ── Installed-language tracking (persisted set of language codes the user
-//    has downloaded; the actual .aff/.dic blobs live in IndexedDB). ──
-const INSTALLED_LANGS_KEY = 'writeadraft:installedLanguages';
-function loadInstalledLanguages(): string[] {
-  try {
-    const raw = localStorage.getItem(INSTALLED_LANGS_KEY);
-    if (raw) {
-      const arr = JSON.parse(raw);
-      if (Array.isArray(arr)) return arr.filter((s): s is string => typeof s === 'string');
-    }
-  } catch { /* noop */ }
-  return [];
-}
-function saveInstalledLanguages(codes: string[]) {
-  try { localStorage.setItem(INSTALLED_LANGS_KEY, JSON.stringify(codes)); } catch { /* noop */ }
-}
 
 /** Built-in screenplay element types — fixed set, hardcoded as Tiptap extensions. */
 export type BuiltInElementType =
@@ -942,22 +924,6 @@ interface EditorState {
   setAddTargets: (targets: string[]) => void;
   /** Append a word to a global dictionary (used by add-to-dictionary submenu). */
   appendWordToGlobalDictionary: (name: string, word: string) => void;
-  /** Codes of languages the user has downloaded (.aff/.dic cached in IndexedDB).
-   *  Persisted so we can show their status before the cache is queried. */
-  installedLanguages: string[];
-  /** Trigger a Hunspell language install from the catalog. */
-  installLanguage: (code: string) => Promise<{ ok: boolean; error?: string }>;
-  /** Install a language from arbitrary `.aff`/`.dic` URLs (or a single base
-   *  URL that points to both, e.g. a jsdelivr package root). */
-  installLanguageFromUrls: (params: {
-    code: string;
-    label: string;
-    affUrl: string;
-    dicUrl: string;
-  }) => Promise<{ ok: boolean; error?: string }>;
-  /** Remove a previously-downloaded language. */
-  uninstallLanguage: (code: string) => Promise<void>;
-
   // Track changes
   trackChangesEnabled: boolean;
   trackChangesLabel: string;
@@ -1597,59 +1563,6 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     spellChecker.setGlobalDictionaries(next);
     return { customDictionaries: next };
   }),
-
-  installedLanguages: loadInstalledLanguages(),
-  installLanguage: async (code) => {
-    const lang = findLanguage(code);
-    if (!lang) return { ok: false, error: `Unknown language: ${code}` };
-    const urls = urlsFor(lang);
-    const ok = await spellChecker.loadLanguage(code, {
-      affUrl: urls.aff,
-      dicUrl: urls.dic,
-      label: lang.label,
-    });
-    if (!ok) {
-      return { ok: false, error: `Couldn't download "${lang.label}" — the source may be temporarily unavailable, or the network is offline.` };
-    }
-    set((s) => {
-      if (s.installedLanguages.includes(code)) return s;
-      const next = [...s.installedLanguages, code];
-      saveInstalledLanguages(next);
-      return { installedLanguages: next };
-    });
-    return { ok: true };
-  },
-  installLanguageFromUrls: async ({ code, label, affUrl, dicUrl }) => {
-    const trimmedCode = code.trim();
-    if (!trimmedCode) return { ok: false, error: 'Language code is required.' };
-    if (!affUrl.trim() || !dicUrl.trim()) {
-      return { ok: false, error: 'Both .aff and .dic URLs are required.' };
-    }
-    const ok = await spellChecker.loadLanguage(trimmedCode, {
-      affUrl: affUrl.trim(),
-      dicUrl: dicUrl.trim(),
-      label: label.trim() || trimmedCode,
-    });
-    if (!ok) {
-      return { ok: false, error: 'Download or parse failed. Check the URLs and that the files are valid Hunspell .aff/.dic.' };
-    }
-    set((s) => {
-      if (s.installedLanguages.includes(trimmedCode)) return s;
-      const next = [...s.installedLanguages, trimmedCode];
-      saveInstalledLanguages(next);
-      return { installedLanguages: next };
-    });
-    return { ok: true };
-  },
-
-  uninstallLanguage: async (code) => {
-    await spellChecker.unloadLanguage(code);
-    set((s) => {
-      const next = s.installedLanguages.filter((c) => c !== code);
-      saveInstalledLanguages(next);
-      return { installedLanguages: next };
-    });
-  },
 
   trackChangesEnabled: false,
   trackChangesLabel: '',

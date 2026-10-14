@@ -1,0 +1,8 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: libreoffice-dictionaries
+Upstream-Contact: <libreoffice@lists.freedesktop.org>
+Source: http://download.documentfoundation.org/libreoffice
+
+Files: dictionaries/es/*
+Copyright: Santiago Bosio <santiago.bosio@gmail.com>
+License: GPL-3+ or LGPL-3+ or MPL-1.1+

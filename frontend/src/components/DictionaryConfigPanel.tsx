@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useEditorStore } from '../stores/editorStore';
-import { spellChecker, PROJECT_DICT_TARGET } from '../editor/spellchecker';
-import { BUILTIN, CATALOG, findLanguage } from '../editor/languageCatalog';
+import { spellChecker, PROJECT_DICT_TARGET, saveEnabledLanguagePreference } from '../editor/spellchecker';
+import { BUNDLED_LANGUAGES } from '../editor/languageCatalog';
 
 /** Subscribe to spellChecker.onChange so React re-renders when its state changes. */
 function useSpellCheckerVersion(): number {
@@ -76,11 +76,9 @@ const AddTargetToggle: React.FC<{ active: boolean; onToggle: () => void; disable
 
 // ─── Languages ─────────────────────────────────────────────────────────────
 
-const LanguagesSection: React.FC<{ onOpenInstaller: () => void }> = ({ onOpenInstaller }) => {
+const LanguagesSection: React.FC = () => {
   useSpellCheckerVersion();
-  const installedLanguages = useEditorStore((s) => s.installedLanguages);
-  const uninstallLanguage = useEditorStore((s) => s.uninstallLanguage);
-  const loaded = spellChecker.getLoadedLanguages();
+  const loaded = new Set(spellChecker.getLoadedLanguages().map((l) => l.code));
   const enabled = new Set(spellChecker.getEnabledLanguages());
 
   const toggle = (code: string, on: boolean) => {
@@ -89,308 +87,39 @@ const LanguagesSection: React.FC<{ onOpenInstaller: () => void }> = ({ onOpenIns
       ? Array.from(new Set([...current, code]))
       : current.filter((c) => c !== code);
     spellChecker.setEnabledLanguages(next);
-  };
-
-  const handleUninstall = async (code: string) => {
-    const lang = findLanguage(code);
-    const label = lang?.label || code;
-    if (!window.confirm(`Remove "${label}" from this installation? You can re-download it any time.`)) return;
-    await uninstallLanguage(code);
+    saveEnabledLanguagePreference(spellChecker.getEnabledLanguages());
   };
 
   return (
     <div style={cardStyle}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <div style={{ flex: 1 }}>
-          <div style={sectionTitleStyle}>Languages</div>
-          <div style={helpTextStyle}>
-            Hunspell engines that check words. Enable any combination for this script.
-          </div>
-        </div>
-        <button type="button" onClick={onOpenInstaller} style={buttonStyle}>
-          Add language…
-        </button>
+      <div style={sectionTitleStyle}>Languages</div>
+      <div style={helpTextStyle}>
+        Dictionaries that check your spelling. This applies to every script.
+        Until you choose, it follows your system language.
       </div>
       <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 4 }}>
-        {loaded.length === 0 && (
-          <div style={helpTextStyle}>Loading built-in language…</div>
-        )}
-        {loaded.map(({ code, label }) => {
-          const isBuiltin = code === BUILTIN.code;
-          const isDownloaded = installedLanguages.includes(code);
-          return (
-            <label
-              key={code}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                padding: '4px 0',
-                fontSize: 13,
-              }}
-            >
-              <input
-                type="checkbox"
-                checked={enabled.has(code)}
-                onChange={(e) => toggle(code, e.target.checked)}
-              />
-              <span style={{ flex: 1 }}>{label}</span>
-              <span style={{ fontSize: 11, color: 'var(--fd-text-muted)' }}>
-                {isBuiltin ? 'bundled' : isDownloaded ? 'installed' : 'loaded'}
-              </span>
-              {!isBuiltin && (
-                <button
-                  type="button"
-                  onClick={() => handleUninstall(code)}
-                  title="Remove this language"
-                  style={{
-                    background: 'transparent',
-                    border: 'none',
-                    color: 'var(--fd-text-muted)',
-                    cursor: 'pointer',
-                    fontSize: 14,
-                    padding: '0 4px',
-                  }}
-                >
-                  ×
-                </button>
-              )}
-            </label>
-          );
-        })}
-      </div>
-    </div>
-  );
-};
-
-// ─── Language installer dialog ─────────────────────────────────────────────
-
-const LanguageInstallerDialog: React.FC<{ onClose: () => void }> = ({ onClose }) => {
-  useSpellCheckerVersion();
-  const installedLanguages = useEditorStore((s) => s.installedLanguages);
-  const installLanguage = useEditorStore((s) => s.installLanguage);
-  const installLanguageFromUrls = useEditorStore((s) => s.installLanguageFromUrls);
-  const [busy, setBusy] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [filter, setFilter] = useState('');
-  const [customOpen, setCustomOpen] = useState(false);
-  const [customCode, setCustomCode] = useState('');
-  const [customLabel, setCustomLabel] = useState('');
-  const [customAff, setCustomAff] = useState('');
-  const [customDic, setCustomDic] = useState('');
-
-  // Recomputed every render — useSpellCheckerVersion above forces a re-render
-  // whenever a language is installed/removed, so this stays current.
-  const loadedCodes = new Set(spellChecker.getLoadedLanguages().map((l) => l.code));
-
-  const filtered = CATALOG.filter((l) => {
-    if (!filter.trim()) return true;
-    const q = filter.toLowerCase();
-    return l.label.toLowerCase().includes(q) || l.code.toLowerCase().includes(q);
-  });
-
-  const handleInstall = async (code: string) => {
-    setBusy(code);
-    setError(null);
-    try {
-      const res = await installLanguage(code);
-      if (!res.ok) setError(res.error || 'Install failed.');
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const handleInstallCustom = async () => {
-    const code = customCode.trim();
-    if (!code) {
-      setError('Language code is required (e.g. hi_IN).');
-      return;
-    }
-    setBusy('__custom__');
-    setError(null);
-    try {
-      const res = await installLanguageFromUrls({
-        code,
-        label: customLabel.trim() || code,
-        affUrl: customAff.trim(),
-        dicUrl: customDic.trim(),
-      });
-      if (!res.ok) {
-        setError(res.error || 'Install failed.');
-      } else {
-        setCustomCode('');
-        setCustomLabel('');
-        setCustomAff('');
-        setCustomDic('');
-        setCustomOpen(false);
-      }
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  return (
-    <div className="dialog-overlay" onClick={onClose}>
-      <div
-        className="dialog-box"
-        onClick={(e) => e.stopPropagation()}
-        // See DictionaryLibrary: a fixed min-width beats the mobile max-width
-        // and takes the dialog's own buttons off screen at narrow widths.
-        style={{ maxWidth: 560, minWidth: 'min(440px, 100%)', maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}
-      >
-        <div className="dialog-header">Add Language</div>
-        <div className="dialog-body" style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: 16 }}>
-          <div style={helpTextStyle}>
-            Languages are downloaded from jsdelivr (wooorm/dictionaries) or
-            the LibreOffice dictionaries repo on GitHub, and cached locally.
-            A network connection is required for the first install.
-          </div>
-          <input
-            type="text"
-            placeholder="Search languages…"
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-            style={{ ...inputStyle, flex: '0 0 auto' }}
-          />
-          {error && (
-            <div
-              style={{
-                padding: '6px 10px',
-                background: 'rgba(192,57,43,0.12)',
-                color: '#c0392b',
-                borderRadius: 4,
-                fontSize: 12,
-              }}
-            >
-              {error}
-            </div>
-          )}
-          <div
+        {BUNDLED_LANGUAGES.map(({ code, label, sample }) => (
+          <label
+            key={code}
             style={{
-              flex: 1,
-              overflowY: 'auto',
-              border: '1px solid var(--fd-border)',
-              borderRadius: 4,
-              minHeight: 240,
-              maxHeight: 360,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              padding: '4px 0',
+              fontSize: 13,
             }}
           >
-            {filtered.length === 0 && (
-              <div style={{ padding: 12, ...helpTextStyle }}>No matches.</div>
-            )}
-            {filtered.map((lang) => {
-              const isInstalled = loadedCodes.has(lang.code) || installedLanguages.includes(lang.code);
-              const isBusy = busy === lang.code;
-              return (
-                <div
-                  key={lang.code}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 8,
-                    padding: '8px 12px',
-                    borderBottom: '1px solid var(--fd-border)',
-                    fontSize: 13,
-                  }}
-                >
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {lang.label}
-                    </div>
-                    <div style={{ fontSize: 11, color: 'var(--fd-text-muted)' }}>
-                      {lang.code} · {
-                        lang.source.kind === 'jsdelivr'
-                          ? lang.source.npm
-                          : lang.source.kind === 'libreoffice'
-                            ? `LibreOffice/${lang.source.folder}`
-                            : `WriTea Draft/${lang.source.path}`
-                      }
-                    </div>
-                  </div>
-                  {lang.sample && (
-                    <div style={{ fontSize: 16, color: 'var(--fd-text-muted)', padding: '0 8px' }}>
-                      {lang.sample}
-                    </div>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => handleInstall(lang.code)}
-                    disabled={isInstalled || isBusy}
-                    style={{
-                      ...buttonStyle,
-                      minWidth: 90,
-                      opacity: isInstalled ? 0.5 : 1,
-                      cursor: isInstalled || isBusy ? 'default' : 'pointer',
-                    }}
-                  >
-                    {isInstalled ? 'Installed' : isBusy ? 'Installing…' : 'Install'}
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-          <div style={{ borderTop: '1px solid var(--fd-border)', paddingTop: 10 }}>
-            <button
-              type="button"
-              onClick={() => setCustomOpen((v) => !v)}
-              style={{
-                ...buttonStyle,
-                width: '100%',
-                textAlign: 'left',
-                padding: '8px 10px',
-                fontSize: 13,
-              }}
-            >
-              {customOpen ? '▾' : '▸'} Install from custom URL (e.g. Hindi, Tamil, etc.)
-            </button>
-            {customOpen && (
-              <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                <div style={helpTextStyle}>
-                  Paste links to a Hunspell `.aff` and `.dic` file. The pair will be downloaded and cached locally.
-                </div>
-                <input
-                  type="text"
-                  placeholder="Language code (e.g. hi_IN)"
-                  value={customCode}
-                  onChange={(e) => setCustomCode(e.target.value)}
-                  style={{ ...inputStyle, flex: '0 0 auto' }}
-                />
-                <input
-                  type="text"
-                  placeholder="Display name (e.g. Hindi)"
-                  value={customLabel}
-                  onChange={(e) => setCustomLabel(e.target.value)}
-                  style={{ ...inputStyle, flex: '0 0 auto' }}
-                />
-                <input
-                  type="text"
-                  placeholder=".aff URL"
-                  value={customAff}
-                  onChange={(e) => setCustomAff(e.target.value)}
-                  style={{ ...inputStyle, flex: '0 0 auto' }}
-                />
-                <input
-                  type="text"
-                  placeholder=".dic URL"
-                  value={customDic}
-                  onChange={(e) => setCustomDic(e.target.value)}
-                  style={{ ...inputStyle, flex: '0 0 auto' }}
-                />
-                <button
-                  type="button"
-                  onClick={handleInstallCustom}
-                  disabled={busy === '__custom__'}
-                  style={{ ...buttonStyle, alignSelf: 'flex-end' }}
-                >
-                  {busy === '__custom__' ? 'Installing…' : 'Install'}
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-        <div className="dialog-footer">
-          <button className="dialog-primary" onClick={onClose}>Done</button>
-        </div>
+            <input
+              type="checkbox"
+              checked={enabled.has(code)}
+              onChange={(e) => toggle(code, e.target.checked)}
+            />
+            <span style={{ flex: 1 }}>{label}</span>
+            <span style={{ fontSize: 11, color: 'var(--fd-text-muted)' }}>
+              {enabled.has(code) && !loaded.has(code) ? 'loading…' : (sample ?? '')}
+            </span>
+          </label>
+        ))}
       </div>
     </div>
   );
@@ -442,9 +171,9 @@ const ProjectDictionarySection: React.FC = () => {
             <div style={helpTextStyle}>
               {projectEnabled
                 ? projectWords.length === 0
-                  ? 'No words yet — anything you "Add to Dictionary" goes here by default.'
+                  ? 'No words yet. Anything you "Add to Dictionary" goes here by default.'
                   : `${projectWords.length} word${projectWords.length === 1 ? '' : 's'}. Saved with this script.`
-                : 'Disabled for this project — checks skip these words and "Add to Dictionary" routes to globals only.'}
+                : 'Disabled for this project. Checks skip these words and "Add to Dictionary" routes to globals only.'}
             </div>
           </div>
         </label>
@@ -604,7 +333,7 @@ const SpellingSettings: React.FC = () => {
           <div style={sectionTitleStyle}>Flag proper nouns</div>
           <div style={helpTextStyle}>
             When off, capitalized unknown words (names, places, brands) are not flagged.
-            Turn on for stricter checking — real proper nouns will then need to be added to a dictionary.
+            Turn on for stricter checking. Real proper nouns will then need to be added to a dictionary.
           </div>
         </div>
       </label>
@@ -614,24 +343,17 @@ const SpellingSettings: React.FC = () => {
 
 // ─── Top-level panel ───────────────────────────────────────────────────────
 
-const DictionaryConfigPanel: React.FC<{ onOpenLibrary: () => void }> = ({ onOpenLibrary }) => {
-  const [installerOpen, setInstallerOpen] = useState(false);
-
-  return (
-    <>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <p style={{ fontSize: 12, color: 'var(--fd-text-muted)', marginTop: 0, marginBottom: 0 }}>
-          Configure which dictionaries are active for this script and where
-          "Add to Dictionary" sends new words.
-        </p>
-        <LanguagesSection onOpenInstaller={() => setInstallerOpen(true)} />
-        <ProjectDictionarySection />
-        <GlobalDictionariesSection onOpenLibrary={onOpenLibrary} />
-        <SpellingSettings />
-      </div>
-      {installerOpen && <LanguageInstallerDialog onClose={() => setInstallerOpen(false)} />}
-    </>
-  );
-};
+const DictionaryConfigPanel: React.FC<{ onOpenLibrary: () => void }> = ({ onOpenLibrary }) => (
+  <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+    <p style={{ fontSize: 12, color: 'var(--fd-text-muted)', marginTop: 0, marginBottom: 0 }}>
+      Configure which dictionaries are active for this script and where
+      "Add to Dictionary" sends new words.
+    </p>
+    <LanguagesSection />
+    <ProjectDictionarySection />
+    <GlobalDictionariesSection onOpenLibrary={onOpenLibrary} />
+    <SpellingSettings />
+  </div>
+);
 
 export default DictionaryConfigPanel;
