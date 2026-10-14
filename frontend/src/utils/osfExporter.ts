@@ -15,7 +15,7 @@
  * forced page breaks, scene numbers, synopses, dual dialogue, and the title
  * page. What does not: WriTea Draft's own additions — notes, tags, beats,
  * character profiles — which the format has nowhere to put. They stay in the
- * .odraft copy, and the exporter does not pretend otherwise.
+ * .writea copy, and the exporter does not pretend otherwise.
  */
 import JSZip from 'jszip';
 import type { JSONContent } from '@tiptap/react';

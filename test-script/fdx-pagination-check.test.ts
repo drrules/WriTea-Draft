@@ -1,7 +1,7 @@
 /**
  * Does a real script paginate the same on screen and in the PDF?
  *
- * Point it at an .fdx (or a saved .odraft) and it imports the file through the
+ * Point it at an .fdx (or a saved .writea) and it imports the file through the
  * app's own parser, lays it out through the editor's paginator and through the
  * PDF exporter, and reports the page counts plus the first element the two put
  * on different pages. That is the reported symptom of issue #123 — "the editor
@@ -55,7 +55,7 @@ const { computeBreaks, activeTemplateHints } = await import('../frontend/src/edi
 const { DEFAULT_PAGE_LAYOUT } = await import('../frontend/src/stores/editorStore');
 const { pmDoc } = await import('../frontend/src/test/screenplaySchema');
 const { parseFDXFull } = await import('../frontend/src/utils/fdxParser');
-const { parseOdraft } = await import('../frontend/src/utils/odraftFormat');
+const { parseWritea } = await import('../frontend/src/utils/writeaFormat');
 const { stripSaveMetadata } = await import('../frontend/src/utils/saveContent');
 
 const FILE = process.env.FDX_FILE;
@@ -63,8 +63,8 @@ const FILE = process.env.FDX_FILE;
 /** The document and the page setup the file asks for. */
 function load(path: string): { doc: JSONContent; layout: typeof DEFAULT_PAGE_LAYOUT } {
   const text = readFileSync(path.replace(/^~/, process.env.HOME ?? '~'), 'utf-8');
-  if (path.endsWith('.odraft')) {
-    const parsed = parseOdraft(text);
+  if (path.endsWith('.writea')) {
+    const parsed = parseWritea(text);
     const { pmDoc: content, metadata } = stripSaveMetadata(parsed.content);
     return {
       doc: content as JSONContent,

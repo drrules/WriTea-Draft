@@ -31,7 +31,7 @@ import {
 import { downloadFDX } from '../utils/fdxExporter';
 import { downloadFountain } from '../utils/fountainExporter';
 import { exportPDF } from '../utils/pdfExporter';
-import { downloadOdraft } from '../utils/odraftFormat';
+import { downloadWritea } from '../utils/writeaFormat';
 import { exportProjectAsZip } from '../utils/zipExport';
 import { DEFAULT_PAGE_LAYOUT, DEFAULT_TAG_CATEGORIES, useEditorStore } from '../stores/editorStore';
 import { useProjectStore } from '../stores/projectStore';
@@ -990,8 +990,8 @@ const ProjectView: React.FC = () => {
               revisionSettings: readRevisionState(content).revisionSettings,
             });
             break;
-          case 'odraft':
-            await downloadOdraft(resp.meta, content);
+          case 'writea':
+            await downloadWritea(resp.meta, content);
             break;
         }
         showToast(`Exported as ${format.toUpperCase()}`, 'success');

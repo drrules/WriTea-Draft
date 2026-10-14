@@ -4,7 +4,7 @@
  * It is a habit of the person printing — send the producer the pages, keep the
  * title page for the draft you file — so it has to survive a restart and follow
  * the writer from one document to the next. That rules out `PageLayout`, which
- * travels inside a .odraft file and a collab session and would push one
+ * travels inside a .writea file and a collab session and would push one
  * writer's printing habit onto everyone sharing the script (issue #98).
  *
  * @vitest-environment node

@@ -3,7 +3,7 @@
  *
  * The other formats each give up something. A spreadsheet flattens cells to
  * plain strings and loses the paragraph structure and the document's layout
- * settings. `.odraft` keeps everything but is opaque. This sits between them:
+ * settings. `.writea` keeps everything but is opaque. This sits between them:
  * plain text you can read, diff and edit in any editor, that still preserves
  * the distinction between rows, columns, blank cells, cue metadata and
  * document-level settings.

@@ -146,7 +146,7 @@ export interface ProjectProperties {
    * (issue #135). Absent or '' = the project lives in the library only.
    */
   folder_path?: string;
-  /** Format new scripts in the linked folder are written in: odraft, fountain or fdx. */
+  /** Format new scripts in the linked folder are written in: writea, fountain or fdx. */
   file_format?: string;
 }
 

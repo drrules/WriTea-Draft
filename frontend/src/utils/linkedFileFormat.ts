@@ -18,7 +18,7 @@ import type { ScriptMeta } from '../services/api';
 import { exportFDX } from './fdxExporter';
 import { exportFountain } from './fountainExporter';
 import { exportOSF } from './osfExporter';
-import { serializeOdraft } from './odraftFormat';
+import { serializeWritea } from './writeaFormat';
 import { mergeFdxRaw, isFdxRaw, settingsSignature } from './fdxPreserve';
 import { stripSaveMetadata } from './saveContent';
 import { readRevisionState } from './revisionState';
@@ -32,12 +32,12 @@ import type {
 export const LINKED_FILE_FORMATS = ['fdx'] as const;
 
 /** Every format a linked file can be in: the above, plus .osf found in a folder. */
-export type LinkedFileFormat = 'odraft' | 'fountain' | 'fdx' | 'osf';
+export type LinkedFileFormat = 'writea' | 'fountain' | 'fdx' | 'osf';
 
-const LINKABLE = new Set<string>(['odraft', 'fountain', 'fdx', 'osf']);
+const LINKABLE = new Set<string>(['writea', 'fountain', 'fdx', 'osf']);
 
 export const LINKED_FORMAT_LABELS: Record<LinkedFileFormat, string> = {
-  odraft: 'WriTea Draft (.odraft) — keeps everything',
+  writea: 'WriTea Draft (.writea) — keeps everything',
   fountain: 'Fountain (.fountain)',
   fdx: 'Final Draft (.fdx)',
   osf: 'Open Screenplay Format (.osf)',
@@ -76,15 +76,15 @@ export function contentHasAv(content: unknown): boolean {
 /**
  * The format a script is actually written in, given the one its project asks
  * for. A treatment is prose and an AV script is a table; neither has anywhere
- * to go in a screenplay interchange format, so both are kept as .odraft.
+ * to go in a screenplay interchange format, so both are kept as .writea.
  */
 export function formatForScript(
   preferred: LinkedFileFormat,
   scriptFormat: string | null | undefined,
   content: unknown,
 ): LinkedFileFormat {
-  if (preferred === 'odraft') return 'odraft';
-  if (scriptFormat === 'treatment' || looksLikeTreatment(content) || contentHasAv(content)) return 'odraft';
+  if (preferred === 'writea') return 'writea';
+  if (scriptFormat === 'treatment' || looksLikeTreatment(content) || contentHasAv(content)) return 'writea';
   return preferred;
 }
 
@@ -118,7 +118,7 @@ export function uniqueFileName(name: string, taken: (candidate: string) => boole
 export interface SerializeOptions {
   /** The editor's typeface, which the payload does not carry. */
   font?: { family: string; size: number };
-  /** Script metadata for the .odraft envelope. */
+  /** Script metadata for the .writea envelope. */
   meta?: Partial<ScriptMeta>;
 }
 
@@ -163,10 +163,10 @@ export function serializeContentForFormat(
         revisions: { color: revision.revisionMode ? revision.revisionColor : '', settings: revision.revisionSettings },
         sceneNumbers: { visible: sceneNumbersVisible, locked: m._sceneNumbersLocked === true },
       });
-    case 'odraft':
+    case 'writea':
       // The native format, and the only one that carries everything — notes,
       // tags, beats and profiles — so it holds the whole payload.
-      return serializeOdraft(
+      return serializeWritea(
         {
           id: '', author: '', format: 'json', created_at: '', updated_at: '',
           page_count: 0, size_bytes: 0, color: '', pinned: false, sort_order: 0, preview: '',

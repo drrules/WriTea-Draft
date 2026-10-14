@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-Convert a text-based screenplay PDF into WriTea Draft's native `.odraft` format.
+Convert a text-based screenplay PDF into WriTea Draft's native `.writea` format.
 
 A screenplay PDF carries its element types in its geometry, not in its text:
 Courier is monospaced and every element sits at a fixed left margin, so the
 x-coordinate of a line tells you whether it is action, dialogue, a parenthetical
 or a character cue. This reads those coordinates with PyMuPDF, rebuilds the
-element structure, and writes the `.odraft` JSON envelope that
-`frontend/src/utils/odraftFormat.ts` parses.
+element structure, and writes the `.writea` JSON envelope that
+`frontend/src/utils/writeaFormat.ts` parses.
 
 Margins are *derived* from the document rather than hard-coded, so this works on
 any conventionally formatted screenplay PDF, not just one particular file:
@@ -19,7 +19,7 @@ Scanned PDFs (page images with no text layer) cannot be converted — run OCR
 first.
 
 Usage:
-    venv/bin/python test-script/pdf_to_odraft.py INPUT.pdf [-o OUT.odraft]
+    venv/bin/python test-script/pdf_to_writea.py INPUT.pdf [-o OUT.writea]
                                                  [--title T] [--author A]
                                                  [--preview N]
 """
@@ -42,7 +42,7 @@ except ImportError:  # pragma: no cover - environment problem, not logic
         "    venv/bin/pip install pymupdf"
     )
 
-ODRAFT_VERSION = 2
+WRITEA_VERSION = 2
 PT_PER_INCH = 72.0
 
 # Element left margins, in inches from the action margin. Straight out of the
@@ -428,7 +428,7 @@ def build_title_page_blocks(fields: dict[str, str], lines_per_page: int = 54) ->
     return blocks
 
 
-# ── .odraft assembly ────────────────────────────────────────────────────────
+# ── .writea assembly ────────────────────────────────────────────────────────
 
 def to_prosemirror(elements: list[Element], title_blocks: list[dict]) -> dict:
     content: list[dict] = list(title_blocks)
@@ -469,7 +469,7 @@ def page_layout(doc: "fitz.Document", action_x: float) -> dict:
     }
 
 
-def build_odraft(doc, elements, title_blocks, fields, action_x, page_count) -> dict:
+def build_writea(doc, elements, title_blocks, fields, action_x, page_count) -> dict:
     title = fields.get("tpTitle", "").strip() or "Untitled"
     author = fields.get("tpWrittenBy", "").strip()
     content = to_prosemirror(elements, title_blocks)
@@ -482,8 +482,8 @@ def build_odraft(doc, elements, title_blocks, fields, action_x, page_count) -> d
     content["_sceneNumbersVisible"] = numbered
     content["_sceneNumbersLocked"] = numbered
     return {
-        "odraft_version": ODRAFT_VERSION,
-        "format": "writeadraft-script",
+        "writea_version": WRITEA_VERSION,
+        "format": "writea-script",
         "exported_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         "meta": {
             "title": title,
@@ -492,7 +492,7 @@ def build_odraft(doc, elements, title_blocks, fields, action_x, page_count) -> d
             "page_count": page_count,
             "project_id": None,
             "script_id": None,
-            "app_version": "pdf_to_odraft",
+            "app_version": "pdf_to_writea",
         },
         "content": content,
     }
@@ -524,7 +524,7 @@ def convert(pdf_path: Path, title: str | None, author: str | None) -> tuple[dict
 
         elements = group_elements(doc, lines, action_x, first_script_page)
         title_blocks = build_title_page_blocks(fields)
-        data = build_odraft(doc, elements, title_blocks, fields, action_x, doc.page_count)
+        data = build_writea(doc, elements, title_blocks, fields, action_x, doc.page_count)
         return data, elements
     finally:
         doc.close()
@@ -559,7 +559,7 @@ def main() -> int:
         return 0
 
     out_path = args.output or (Path(__file__).parent / "output" /
-                               f"{data['meta']['title'] or args.pdf.stem}.odraft")
+                               f"{data['meta']['title'] or args.pdf.stem}.writea")
     try:
         out_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")

@@ -145,7 +145,7 @@ plist["UTImportedTypeDeclarations"] = [
      "UTTypeTagSpecification": {"public.filename-extension": ["fountain"], "public.mime-type": "text/plain"}},
     {"UTTypeIdentifier": "net.japanada.writea-draft.document", "UTTypeDescription": "WriTea Draft Screenplay",
      "UTTypeConformsTo": ["public.json"],
-     "UTTypeTagSpecification": {"public.filename-extension": ["odraft"], "public.mime-type": "application/json"}},
+     "UTTypeTagSpecification": {"public.filename-extension": ["writea"], "public.mime-type": "application/json"}},
     # Imported, not exported: the format belongs to Fade In. It is a zip
     # container, so it conforms to the archive type rather than to text — which
     # is also why it has to be read as bytes on the way in.

@@ -11,7 +11,7 @@
  *
  * Inputs (any mix, colon-separated in RUNTIME_FILES):
  *   .json      written by test-script/pdf_screenplay_to_json.py from a studio PDF
- *   .fdx .odraft .fountain   imported through the app's own parsers
+ *   .fdx .writea .fountain   imported through the app's own parsers
  * Ground truth comes from test-script/runtime-truth.csv, matched on file name.
  *
  * Run from `frontend/`:
@@ -34,7 +34,7 @@ const { DEFAULT_PAGE_LAYOUT } = await import('../frontend/src/stores/editorStore
 const { pmDoc } = await import('../frontend/src/test/screenplaySchema');
 const { parseFDXFull } = await import('../frontend/src/utils/fdxParser');
 const { parseFountain } = await import('../frontend/src/utils/fountainParser');
-const { parseOdraft } = await import('../frontend/src/utils/odraftFormat');
+const { parseWritea } = await import('../frontend/src/utils/writeaFormat');
 const { stripSaveMetadata } = await import('../frontend/src/utils/saveContent');
 const { jsonBlockText } = await import('../frontend/src/utils/nodeText');
 const { computeSceneTiming, activeTimingOptions } = await import('../frontend/src/utils/scriptTiming');
@@ -76,8 +76,8 @@ function load(path: string): Loaded {
     const layout = h > 11.3 ? DEFAULT_PAGE_LAYOUT : { ...LETTER, pageWidth: w, pageHeight: h };
     return { doc: j.doc, layout, pdfPages: j.pdfPages };
   }
-  if (ext === '.odraft') {
-    const { pmDoc: content, metadata } = stripSaveMetadata(parseOdraft(text).content);
+  if (ext === '.writea') {
+    const { pmDoc: content, metadata } = stripSaveMetadata(parseWritea(text).content);
     return { doc: content as JSONContent, layout: { ...DEFAULT_PAGE_LAYOUT, ...((metadata._pageLayout as object) ?? {}) } };
   }
   if (ext === '.fountain') return { doc: parseFountain(text) as JSONContent, layout: LETTER };

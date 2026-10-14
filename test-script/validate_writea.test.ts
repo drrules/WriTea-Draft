@@ -1,36 +1,36 @@
 /**
- * Validate a converted .odraft file against WriTea Draft's own parser and schema.
+ * Validate a converted .writea file against WriTea Draft's own parser and schema.
  *
  * Writing valid-looking JSON is not the same as writing a file the app can
- * open: `parseOdraft` rejects a bad envelope, and ProseMirror rejects a node
+ * open: `parseWritea` rejects a bad envelope, and ProseMirror rejects a node
  * type or attribute the screenplay schema does not declare — silently dropping
  * the content in the editor rather than erroring. Running the file through both
  * is the only real proof the conversion worked.
  *
- * Point it at a file with ODRAFT_FILE and run it from `frontend/`:
- *   ODRAFT_FILE="../test-script/output/NAME.odraft" \
- *     npx vitest run ../test-script/validate_odraft.test.ts
+ * Point it at a file with WRITEA_FILE and run it from `frontend/`:
+ *   WRITEA_FILE="../test-script/output/NAME.writea" \
+ *     npx vitest run ../test-script/validate_writea.test.ts
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { parseOdraft } from '../frontend/src/utils/odraftFormat';
+import { parseWritea } from '../frontend/src/utils/writeaFormat';
 import { stripSaveMetadata } from '../frontend/src/utils/saveContent';
 import { testSchema } from '../frontend/src/test/screenplaySchema';
 import { findTitlePageRegion, titlePageAttrsCarryData } from '../frontend/src/utils/titlePageRegion';
 
-const FILE = process.env.ODRAFT_FILE;
+const FILE = process.env.WRITEA_FILE;
 
-describe('converted .odraft', () => {
+describe('converted .writea', () => {
   if (!FILE) {
-    it.skip('needs ODRAFT_FILE', () => {});
+    it.skip('needs WRITEA_FILE', () => {});
     return;
   }
 
   const raw = readFileSync(FILE, 'utf-8');
-  const parsed = parseOdraft(raw);
+  const parsed = parseWritea(raw);
   const { pmDoc } = stripSaveMetadata(parsed.content);
 
-  it('is accepted by parseOdraft', () => {
+  it('is accepted by parseWritea', () => {
     expect(parsed.version).toBe(2);
     expect(parsed.meta.title).toBeTruthy();
   });

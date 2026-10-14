@@ -143,7 +143,7 @@ import { setPendingSaveFlush } from '../services/pendingSave';
 import OpenFile from './OpenFile';
 import type { OpenSource } from './OpenFile';
 import WelcomeDialog, { type WelcomeChoice } from './WelcomeDialog';
-import { downloadOdraft } from '../utils/odraftFormat';
+import { downloadWritea } from '../utils/writeaFormat';
 import { pasteAsFountain } from '../utils/pasteFountain';
 import {
   parseScreenplayImport,
@@ -4393,16 +4393,16 @@ const ScreenplayEditor: React.FC = () => {
             Save As
           </button>
           <button className="save-failure-btn" onClick={() => {
-            // Goes through downloadOdraft so the file gets the .odraft envelope
+            // Goes through downloadWritea so the file gets the .writea envelope
             // and WriTea Draft can actually reopen it. The previous version wrote a
-            // bare payload via a raw anchor, which parseOdraft rejected — the
+            // bare payload via a raw anchor, which parseWritea rejected — the
             // emergency backup could not be imported — and which on desktop
             // dropped silently into Downloads with no dialog.
             const content = buildSaveContent();
             if (!content) return;
             const store = useEditorStore.getState();
             const title = store.documentTitle || 'Untitled';
-            downloadOdraft(
+            downloadWritea(
               {
                 id: '', title, author: '', format: 'json',
                 created_at: '', updated_at: '', page_count: store.pageCount,

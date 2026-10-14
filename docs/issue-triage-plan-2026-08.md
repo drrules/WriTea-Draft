@@ -132,8 +132,8 @@ data-loss path, not a theoretical one.
 
 **Fix** — a recovery snapshot that is deliberately separate from the user's
 saved file, exactly as the issue asks:
-1. Serialize the live document with the existing `serializeOdraft`
-   (`utils/odraftFormat.ts`) into a dedicated recovery slot — local SQLite on
+1. Serialize the live document with the existing `serializeWritea`
+   (`utils/writeaFormat.ts`) into a dedicated recovery slot — local SQLite on
    mobile Tauri, `localStorage` on web.
 2. Write it on the existing editor debounce **and** on `visibilitychange` →
    `hidden` and `pagehide`. iOS gives no reliable termination callback; those two

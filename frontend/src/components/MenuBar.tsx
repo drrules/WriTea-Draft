@@ -367,7 +367,7 @@ const MenuBar: React.FC<MenuBarProps> = ({
       // Everything else goes through the same serializer as files linked to
       // library scripts (issue #135), so the two can never write a format
       // differently. It works from the saved payload, which carries the
-      // notes, beats and profiles .odraft keeps and .fdx partly does.
+      // notes, beats and profiles .writea keeps and .fdx partly does.
       const content = buildSaveContent();
       if (!content) throw new Error('No document is open.');
       return serializeContentForFormat(format, content, s.documentTitle, {
@@ -2077,7 +2077,7 @@ const MenuBar: React.FC<MenuBarProps> = ({
   // ── Backups ────────────────────────────────────────────────────────────
   // "Back Up Now" writes a snapshot into the configured folder immediately,
   // with no dialog. That is what makes it different from File → Export →
-  // .odraft: Export is "give me a file to send somewhere", Back Up Now is "pin
+  // .writea: Export is "give me a file to send somewhere", Back Up Now is "pin
   // this moment in my safety net". Same bytes, different lifecycle — manual
   // snapshots are never pruned by the retention limit.
   const backUpNow = useCallback(async () => {
@@ -3418,7 +3418,7 @@ const MenuBar: React.FC<MenuBarProps> = ({
                 <li><strong>Final Draft Habits.</strong> Final Draft (.fdx) is the format your scripts are saved in, with the native Save and Save As dialog. Enter and Tab move between elements the way Final Draft does, scene headings autocomplete (time of day included), new scripts start in Courier Final Draft, and Ctrl+O and Ctrl+W open and close scripts.</li>
                 <li><strong>Colour Your Elements.</strong> Each element has its own text colour in the formatting template (scene headings, action, characters and dialogue, each in a specific colour) so a script is easier to read and follow. The colours show in the editor and in PDF, Word and Fade In exports. The colours can be changed by you.</li>
                 <li><strong>Black And White Exports.</strong> The Black and White options for Final Draft (.fdx), PDF, Word and Fade In in the Export menu make a plain copy with every font colour black and every background white, for printing or sharing.</li>
-                <li><strong>Simpler By Design.</strong> The online features, the Projects screens and the .odraft format are gone. Scripts are files on your disk, opened and saved like any other document.</li>
+                <li><strong>Simpler By Design.</strong> The online features, the Projects screens and the .writea format are gone. Scripts are files on your disk, opened and saved like any other document.</li>
                 <li><strong>A New Look.</strong> A new logo (a teacup and a quill on a cornflower tile), with a matching app icon on every platform and a new startup screen.</li>
               </ul>
               </div>

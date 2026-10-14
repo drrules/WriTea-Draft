@@ -12,7 +12,7 @@
  *     `content://` document URI.
  *
  * That is the whole of the platform difference: filenames, retention, the
- * project subfolders and the .odraft payload are identical everywhere, so the
+ * project subfolders and the .writea payload are identical everywhere, so the
  * Recover dialog can open a backup written on a Mac from an iPad.
  *
  * Not available in the browser, where there is nothing that survives a reload.
@@ -25,9 +25,9 @@ import {
   type ParsedBackup,
 } from '../utils/backupNaming';
 import {
-  serializeOdraft, parseOdraft, parseOdraftLoose,
-  type ParsedOdraft, type BackupKind,
-} from '../utils/odraftFormat';
+  serializeWritea, parseWritea, parseWriteaLoose,
+  type ParsedWritea, type BackupKind,
+} from '../utils/writeaFormat';
 import { collectAssetRefs, packAssets, packScratchAssets } from './snapshotAssets';
 import { collectScratchIds } from '../utils/scratchRefs';
 import type { ScriptMeta } from './api';
@@ -46,7 +46,7 @@ export interface BackupEntry {
   title: string;
   scriptKey: string;
   date: Date;
-  /** 'external' = an .odraft file in the folder that WriTea Draft did not write. */
+  /** 'external' = an .writea file in the folder that WriTea Draft did not write. */
   kind: 'auto' | 'manual' | 'external';
   sizeBytes: number;
   /**
@@ -116,7 +116,7 @@ function joinPath(dir: string, name: string): string {
 }
 
 /**
- * Every `.odraft` under the backup folder: the project subfolders, plus the
+ * Every `.writea` under the backup folder: the project subfolders, plus the
  * root itself for snapshots written before backups were grouped by project.
  *
  * Descends exactly one level. The folder belongs to the user, who may well have
@@ -134,13 +134,13 @@ async function collectSnapshotFiles(
   const out: Array<DirEntryInfo & { project: string }> = [];
   for (const e of top) {
     if (!e.is_dir) {
-      if (/\.odraft$/i.test(e.name)) out.push({ ...e, project: '' });
+      if (/\.writea$/i.test(e.name)) out.push({ ...e, project: '' });
       continue;
     }
     try {
       const inner = await invoke<DirEntryInfo[]>('list_dir_entries', {
         path: e.path,
-        extension: 'odraft',
+        extension: 'writea',
       });
       for (const f of inner) {
         if (!f.is_dir) out.push({ ...f, project: e.name });
@@ -293,7 +293,7 @@ export async function writeSnapshot(opts: WriteSnapshotOptions): Promise<WriteSn
     size_bytes: 0, color: '', pinned: false, sort_order: 0, preview: '',
   } as ScriptMeta;
 
-  const text = serializeOdraft(meta, opts.content, {
+  const text = serializeWritea(meta, opts.content, {
     assets,
     assetsOmitted,
     backupKind: opts.kind as BackupKind,
@@ -318,7 +318,7 @@ export async function writeSnapshot(opts: WriteSnapshotOptions): Promise<WriteSn
   return { path, filename, bytes: text.length, assetsOmitted };
 }
 
-/** Every .odraft in the backup folder and its project folders, newest first. */
+/** Every .writea in the backup folder and its project folders, newest first. */
 export async function listSnapshots(): Promise<BackupEntry[]> {
   if (!backupsAvailable()) return [];
 
@@ -333,10 +333,10 @@ export async function listSnapshots(): Promise<BackupEntry[]> {
         date: parsed.timestamp, kind: parsed.kind, sizeBytes: e.sizeBytes, project: e.project,
       });
     } else {
-      // An .odraft the user put here themselves (an export, a copy). Listed so
+      // An .writea the user put here themselves (an export, a copy). Listed so
       // it can be recovered, tagged 'external' so it is never pruned.
       out.push({
-        path: e.path, name: e.name, title: e.name.replace(/\.odraft$/i, ''),
+        path: e.path, name: e.name, title: e.name.replace(/\.writea$/i, ''),
         scriptKey: 'external',
         date: new Date(e.modifiedMs || 0), kind: 'external', sizeBytes: e.sizeBytes,
         project: e.project,
@@ -380,7 +380,7 @@ export async function pruneSnapshots(keep?: number): Promise<number> {
 }
 
 /** Read and parse one snapshot. Accepts legacy envelope-less backups. */
-export async function readSnapshot(path: string): Promise<ParsedOdraft> {
+export async function readSnapshot(path: string): Promise<ParsedWritea> {
   const folder = useSettingsStore.getState().backupFolder;
   let text: string;
   switch (backupPlatform()) {
@@ -401,10 +401,10 @@ export async function readSnapshot(path: string): Promise<ParsedOdraft> {
   }
 
   try {
-    return parseOdraft(text);
+    return parseWritea(text);
   } catch {
     // Older builds wrote crash backups with no envelope; recover them anyway.
-    return parseOdraftLoose(text);
+    return parseWriteaLoose(text);
   }
 }
 

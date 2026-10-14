@@ -50,10 +50,10 @@ A complete list of features in WriTea Draft.
 - **Fountain (.fountain)** -- Import and export
 - **Fade In (.fadein) / Open Screenplay Format (.osf)** -- Import and export, carrying elements, emphasis, colour, fonts, page breaks, scene numbers, synopses, dual dialogue and the title page
 - **Microsoft Word (.docx)** -- Import and export
-- **WriTea Draft (.odraft)** -- Lossless export: the script plus its notes, tags, beats, character profiles and images
+- **WriTea Draft (.writea)** -- Lossless export: the script plus its notes, tags, beats, character profiles and images
 - **Paste as Fountain** -- Paste Fountain markup straight into the script as real elements
 - **PDF** -- Export with proper screenplay formatting
-- **Open in place** -- Edit a `.fdx`, `.fountain`, `.fadein`, `.osf`, `.odraft` or `.txt` where it lives and save straight back to it, on desktop and mobile
+- **Open in place** -- Edit a `.fdx`, `.fountain`, `.fadein`, `.osf`, `.writea` or `.txt` where it lives and save straight back to it, on desktop and mobile
 
 ## Editing Tools
 

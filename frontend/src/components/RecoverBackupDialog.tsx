@@ -26,7 +26,7 @@ import {
   type BackupEntry,
 } from '../services/backupService';
 import { unpackAssets } from '../services/snapshotAssets';
-import { parseOdraftLoose, type ParsedOdraft } from '../utils/odraftFormat';
+import { parseWriteaLoose, type ParsedWritea } from '../utils/writeaFormat';
 import { relativeTime } from '../utils/relativeTime';
 import { docHasAnyText } from '../utils/docText';
 import { openTextFile } from '../utils/fileOps';
@@ -74,7 +74,7 @@ const RecoverBackupDialog: React.FC<Props> = ({ open, onClose, onBeforeReplace }
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [selected, setSelected] = useState<BackupEntry | null>(null);
-  const [preview, setPreview] = useState<ParsedOdraft | null>(null);
+  const [preview, setPreview] = useState<ParsedWritea | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [confirmReplace, setConfirmReplace] = useState(false);
@@ -218,9 +218,9 @@ const RecoverBackupDialog: React.FC<Props> = ({ open, onClose, onBeforeReplace }
   /** Recover a snapshot the user moved somewhere else. */
   const handleImportFile = useCallback(async () => {
     try {
-      const file = await openTextFile([{ name: 'WriTea Draft', extensions: ['odraft'] }]);
+      const file = await openTextFile([{ name: 'WriTea Draft', extensions: ['writea'] }]);
       if (!file) return;
-      const parsed = parseOdraftLoose(file.content);
+      const parsed = parseWriteaLoose(file.content);
       setSelected({
         path: file.name, name: file.name, title: parsed.meta.title || file.name,
         scriptKey: 'external', date: new Date(), kind: 'external',

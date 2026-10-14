@@ -27,7 +27,7 @@
  *   - An AV body inside a screenplay. `Insert AV Columns` puts one in any
  *     script, and Film Screenplay has no `avPara` rule to find.
  *   - An AV script whose template did not come back with it — a restored
- *     session, an imported document, a `.odraft` opened from a backup. The
+ *     session, an imported document, a `.writea` opened from a backup. The
  *     document still holds real AV nodes; only the formatting preference is
  *     missing, and that is not a reason to make the document uneditable.
  */

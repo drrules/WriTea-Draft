@@ -790,7 +790,7 @@ export async function syncScriptWithFile(
 export async function linkScriptToFile(projectId: string, scriptId: string, path: string): Promise<WriteOutcome> {
   const ext = extensionOfPath(path);
   if (!isLinkableExtension(ext)) {
-    throw new Error(`WriTea Draft can keep scripts in .odraft, .fountain, .fdx or .osf files, not .${ext || '(none)'}.`);
+    throw new Error(`WriTea Draft can keep scripts in .writea, .fountain, .fdx or .osf files, not .${ext || '(none)'}.`);
   }
   return withScriptLock(scriptId, async () => {
     const link: ScriptFileLink = {

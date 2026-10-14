@@ -1,15 +1,15 @@
 /**
- * Render a converted .odraft back to PDF with WriTea Draft's own exporter.
+ * Render a converted .writea back to PDF with WriTea Draft's own exporter.
  *
- * The schema check in validate_odraft.test.ts proves the file *loads*. This
+ * The schema check in validate_writea.test.ts proves the file *loads*. This
  * proves it *reads* — it lays the document out through the same code path the
  * app's File ▸ Export uses, so the result can be put side by side with the
  * source PDF and compared page for page. A conversion that mislabels an element
  * still loads cleanly; it only looks wrong once something paginates it.
  *
  * Output lands in test-script/output/ (gitignored). Run from `frontend/`:
- *   ODRAFT_FILE="../test-script/output/NAME.odraft" \
- *     npx vitest run --config ../test-script/vitest.odraft.config.ts
+ *   WRITEA_FILE="../test-script/output/NAME.writea" \
+ *     npx vitest run --config ../test-script/vitest.writea.config.ts
  *
  * @vitest-environment node
  */
@@ -17,14 +17,14 @@ import { describe, it, expect, vi, beforeAll } from 'vitest';
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join, dirname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseOdraft } from '../frontend/src/utils/odraftFormat';
+import { parseWritea } from '../frontend/src/utils/writeaFormat';
 import { stripSaveMetadata } from '../frontend/src/utils/saveContent';
 import { DEFAULT_PAGE_LAYOUT } from '../frontend/src/stores/editorStore';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = join(HERE, '..', 'frontend', 'public');
 const OUT_DIR = join(HERE, 'output');
-const FILE = process.env.ODRAFT_FILE;
+const FILE = process.env.WRITEA_FILE;
 
 /** saveFile reaches for Tauri or the DOM; capture the bytes instead. */
 const saved: Uint8Array[] = [];
@@ -58,14 +58,14 @@ beforeAll(() => {
 
 const { exportPDF } = await import('../frontend/src/utils/pdfExporter');
 
-describe('converted .odraft, rendered back to PDF', () => {
+describe('converted .writea, rendered back to PDF', () => {
   if (!FILE) {
-    it.skip('needs ODRAFT_FILE', () => {});
+    it.skip('needs WRITEA_FILE', () => {});
     return;
   }
 
   it('lays out through the real exporter', async () => {
-    const parsed = parseOdraft(readFileSync(FILE, 'utf-8'));
+    const parsed = parseWritea(readFileSync(FILE, 'utf-8'));
     const { pmDoc, metadata } = stripSaveMetadata(parsed.content);
     const layout = { ...DEFAULT_PAGE_LAYOUT, ...(metadata._pageLayout as object ?? {}) };
 
@@ -73,7 +73,7 @@ describe('converted .odraft, rendered back to PDF', () => {
     await exportPDF(pmDoc, parsed.meta.title, layout);
     expect(saved.length, 'exporter produced a file').toBe(1);
 
-    const out = join(OUT_DIR, `${basename(FILE, '.odraft')} (round-trip).pdf`);
+    const out = join(OUT_DIR, `${basename(FILE, '.writea')} (round-trip).pdf`);
     writeFileSync(out, saved[0]);
     expect(readFileSync(out).toString('latin1').startsWith('%PDF-')).toBe(true);
     console.log(`wrote ${out}`);

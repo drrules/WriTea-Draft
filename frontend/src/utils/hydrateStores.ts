@@ -1,10 +1,10 @@
 /**
- * Restore the `_`-prefixed app metadata from an imported `.odraft` payload.
+ * Restore the `_`-prefixed app metadata from an imported `.writea` payload.
  *
  * A saved script is the document plus notes, tags, beats, character profiles
  * and layout, all carried as `_`-prefixed top-level keys (see
  * `utils/saveContent.ts`). Loading a script from the library restores all of
- * them; importing an `.odraft` file did not, so an imported backup came back
+ * them; importing an `.writea` file did not, so an imported backup came back
  * as bare text with every note and tag silently dropped.
  *
  * Scope note: this covers the metadata that lives purely in `editorStore` and

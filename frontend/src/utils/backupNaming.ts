@@ -5,9 +5,9 @@
  * folder, and the filename still carries everything: which script, when, and
  * whether the writer pinned it. The scheme is
  *
- *     <Backup folder>/<Project>/<Title>_<YYYY-MM-DD>_<HHMMSS>_<sid8>[.manual].odraft
- *     WriTea Draft Backups/Silent Sonata/The Long Goodbye_2026-07-27_143205_a1b2c3d4.odraft
- *     WriTea Draft Backups/Silent Sonata/The Long Goodbye_2026-07-27_150000_a1b2c3d4.manual.odraft
+ *     <Backup folder>/<Project>/<Title>_<YYYY-MM-DD>_<HHMMSS>_<sid8>[.manual].writea
+ *     WriTea Draft Backups/Silent Sonata/The Long Goodbye_2026-07-27_143205_a1b2c3d4.writea
+ *     WriTea Draft Backups/Silent Sonata/The Long Goodbye_2026-07-27_150000_a1b2c3d4.manual.writea
  *
  * Filenames stay self-describing even so — a snapshot dragged out of its folder
  * is still identifiable, and backups written by older builds sit flat in the
@@ -118,17 +118,17 @@ export function buildBackupFilename(opts: {
   const stamp = formatBackupStamp(opts.date);
   const key = scriptKeyFor(opts.scriptId);
   const suffix = opts.kind === 'manual' ? '.manual' : '';
-  return `${title}_${stamp}_${key}${suffix}.odraft`;
+  return `${title}_${stamp}_${key}${suffix}.writea`;
 }
 
 // Anchored at the TAIL, because a title may itself contain underscores and
 // date-like substrings ("Blade_Runner_2049").
 const FILENAME_RE =
-  /^(.*)_(\d{4})-(\d{2})-(\d{2})_(\d{2})(\d{2})(\d{2})_([A-Za-z0-9]+)(\.manual)?\.odraft$/;
+  /^(.*)_(\d{4})-(\d{2})-(\d{2})_(\d{2})(\d{2})(\d{2})_([A-Za-z0-9]+)(\.manual)?\.writea$/;
 
 /**
  * Parse a filename this module produced. Returns null for anything else —
- * including a hand-made or exported `.odraft` a user dropped in the folder.
+ * including a hand-made or exported `.writea` a user dropped in the folder.
  * That null is a safety property: the pruner only ever deletes files it can
  * positively identify as its own.
  */

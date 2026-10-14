@@ -190,7 +190,7 @@ const ProjectStorageDialog: React.FC<Props> = ({ project, onClose, onProjectChan
             {folder
               ? 'Applies to scripts added from now on; existing files keep their format.'
               : 'The format each script is written in when the project is saved to a folder.'}
-            {' '}Treatments are always saved as .odraft.
+            {' '}Treatments are always saved as .writea.
           </p>
           {busy && <p style={{ margin: '10px 0 0', fontSize: 13 }}>{busy}…</p>}
         </div>

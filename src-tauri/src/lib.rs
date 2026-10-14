@@ -1863,7 +1863,7 @@ fn read_binary_file(path: String) -> Result<Vec<u8>, String> {
 }
 
 // ── Backup folder commands ────────────────────────────────────────────────
-// The automatic-backup feature writes timestamped .odraft snapshots to a folder
+// The automatic-backup feature writes timestamped .writea snapshots to a folder
 // the user picks, which is outside the fs plugin scope in
 // capabilities/default.json. Like the commands above, these go through Rust
 // deliberately rather than widening that scope.

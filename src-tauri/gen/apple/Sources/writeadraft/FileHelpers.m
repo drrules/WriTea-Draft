@@ -681,7 +681,7 @@ static NSDictionary* od_backup_entry(NSURL *url, NSString *project, NSString *re
     };
 }
 
-/// Every .odraft in the backup folder and its project subfolders, as JSON.
+/// Every .writea in the backup folder and its project subfolders, as JSON.
 ///
 /// Descends exactly one level, matching the desktop listing: the folder belongs
 /// to the writer, who may well have a deep tree of their own in there.
@@ -715,7 +715,7 @@ char* ios_folder_list(const char* bookmark_cstr) {
                 [item getResourceValue:&isDir forKey:NSURLIsDirectoryKey error:NULL];
 
                 if (![isDir boolValue]) {
-                    if ([item.pathExtension caseInsensitiveCompare:@"odraft"] == NSOrderedSame) {
+                    if ([item.pathExtension caseInsensitiveCompare:@"writea"] == NSOrderedSame) {
                         [entries addObject:od_backup_entry(item, @"", item.lastPathComponent)];
                     }
                     continue;
@@ -729,7 +729,7 @@ char* ios_folder_list(const char* bookmark_cstr) {
                                            error:NULL];
                 // An unreadable subfolder must not make the rest vanish.
                 for (NSURL *file in inner) {
-                    if ([file.pathExtension caseInsensitiveCompare:@"odraft"] != NSOrderedSame) {
+                    if ([file.pathExtension caseInsensitiveCompare:@"writea"] != NSOrderedSame) {
                         continue;
                     }
                     NSString *relative =

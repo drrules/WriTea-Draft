@@ -6,7 +6,7 @@
  *   - Auto-save writes the *real* copy, but only for a script that lives in a
  *     project. A screenplay that was imported or started and never saved to the
  *     library has nothing writing it anywhere.
- *   - Automatic backups write .odraft snapshots to a folder the user picks, on
+ *   - Automatic backups write .writea snapshots to a folder the user picks, on
  *     every platform the app runs on (see backupService) — but only once the
  *     writer has chosen that folder, and only on the interval they set.
  *

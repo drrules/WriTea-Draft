@@ -115,6 +115,6 @@ RUNTIME_FILES="$(ls ../test-script/output/runtime-check/* | tr '\n' ':')" \
   --disable-console-intercept
 ```
 
-`.fdx`, `.odraft` and `.fountain` files can go in `RUNTIME_FILES` directly.
+`.fdx`, `.writea` and `.fountain` files can go in `RUNTIME_FILES` directly.
 The PDFs are not checked in; the studio links are listed at
 simplyscripts.com/oscar-screenplays-97.html.

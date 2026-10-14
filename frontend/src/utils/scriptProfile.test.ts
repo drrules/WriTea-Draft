@@ -109,7 +109,7 @@ describe('pacing in the runtime estimate', () => {
 describe('saved with the script', () => {
   beforeEach(() => useEditorStore.getState().setScriptProfile(DEFAULT_SCRIPT_PROFILE));
 
-  it('is a save-metadata key, so .odraft, backups and the library carry it', () => {
+  it('is a save-metadata key, so .writea, backups and the library carry it', () => {
     expect(SAVE_METADATA_KEYS).toContain('_scriptProfile');
   });
 

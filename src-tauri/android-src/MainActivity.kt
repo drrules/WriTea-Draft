@@ -430,7 +430,7 @@ class MainActivity : TauriActivity() {
          *
          * An existing file is reused rather than left for SAF to rename: two
          * snapshots a second apart share a filename, and letting the provider
-         * make "name (1).odraft" would leave a file the pruner cannot parse and
+         * make "name (1).writea" would leave a file the pruner cannot parse and
          * so can never clean up.
          */
         @JvmStatic
@@ -452,7 +452,7 @@ class MainActivity : TauriActivity() {
                 val docUri = if (existing != null) {
                     DocumentsContract.buildDocumentUriUsingTree(treeUri, existing.id)
                 } else {
-                    // octet-stream keeps the .odraft extension intact; a more
+                    // octet-stream keeps the .writea extension intact; a more
                     // specific MIME type makes SAF rewrite the name.
                     DocumentsContract.createDocument(
                         context.contentResolver,
@@ -476,7 +476,7 @@ class MainActivity : TauriActivity() {
         }
 
         /**
-         * Every .odraft in the backup folder and its project subfolders, as a
+         * Every .writea in the backup folder and its project subfolders, as a
          * JSON array. Descends exactly one level, matching the desktop listing.
          * Returns null only when the folder itself could not be read — an empty
          * folder is "[]", which means "no backups yet" rather than "gone".
@@ -489,7 +489,7 @@ class MainActivity : TauriActivity() {
                 val out = JSONArray()
 
                 fun add(child: SafChild, project: String) {
-                    if (!child.name.endsWith(".odraft", ignoreCase = true)) return
+                    if (!child.name.endsWith(".writea", ignoreCase = true)) return
                     val uri = DocumentsContract.buildDocumentUriUsingTree(treeUri, child.id)
                     out.put(
                         JSONObject()

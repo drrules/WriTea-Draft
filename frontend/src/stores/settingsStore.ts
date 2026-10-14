@@ -115,7 +115,7 @@ interface SettingsState {
    */
   defaultProjectFolder: string;
   setDefaultProjectFolder: (path: string) => void;
-  /** Format scripts in a project folder are written in: odraft, fountain or fdx. */
+  /** Format scripts in a project folder are written in: writea, fountain or fdx. */
   defaultFileFormat: string;
   setDefaultFileFormat: (format: string) => void;
 

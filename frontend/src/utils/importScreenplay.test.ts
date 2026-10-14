@@ -145,8 +145,8 @@ describe('parseScreenplayImport', () => {
     );
   });
 
-  it('reports a malformed .odraft with a readable message', async () => {
-    await expect(parseScreenplayImport('Script.odraft', 'not json')).rejects.toThrow(/Invalid \.odraft file/);
+  it('reports a malformed .writea with a readable message', async () => {
+    await expect(parseScreenplayImport('Script.writea', 'not json')).rejects.toThrow(/Invalid \.writea file/);
   });
 
   it('treats an unknown extension as Fountain text', async () => {

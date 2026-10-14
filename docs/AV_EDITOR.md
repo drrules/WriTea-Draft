@@ -347,7 +347,7 @@ set an element — in two reachable states:
 - an AV body inside a screenplay, which **Insert AV Columns** now allows in any
   script, where Industry Standard has no `avPara` rule to find;
 - an AV script whose template did not come back with it: a restored session, an
-  import, a `.odraft` from a backup. The AV nodes are intact; only the
+  import, a `.writea` from a backup. The AV nodes are intact; only the
   formatting preference is missing, and that is no reason to make the document
   uneditable.
 
@@ -456,7 +456,7 @@ round-trips. Generated files were additionally opened with third-party readers:
 ## WriTea Draft AV YAML
 
 Each of the other formats gives something up. A spreadsheet flattens cells to
-plain strings, losing paragraph styles and the document's settings. `.odraft`
+plain strings, losing paragraph styles and the document's settings. `.writea`
 keeps everything but is opaque. YAML sits between them: plain text you can read,
 diff and hand-edit, that still preserves structure.
 

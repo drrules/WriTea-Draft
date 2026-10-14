@@ -20,7 +20,7 @@
  *      auth and handed over as a blob URL.
  *
  * `missing` is deliberately part of the result. A scratch blob can be legitimately
- * unreachable — a `.odraft` opened on another machine, or a blob swept after its
+ * unreachable — a `.writea` opened on another machine, or a blob swept after its
  * document was abandoned — and callers should show a placeholder at the stored
  * size rather than let the browser collapse a broken image and shift pagination.
  */

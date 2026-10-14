@@ -101,7 +101,7 @@ targets:
               - public.json
             UTTypeTagSpecification:
               public.filename-extension:
-                - odraft
+                - writea
               public.mime-type: application/json
     entitlements:
       path: writeadraft_iOS/writeadraft_iOS.entitlements

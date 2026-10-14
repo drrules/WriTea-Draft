@@ -220,10 +220,10 @@ function doc(text: string, extra: Record<string, unknown> = {}): Record<string, 
   };
 }
 
-async function folderProject(format = 'odraft'): Promise<string> {
+async function folderProject(format = 'writea'): Promise<string> {
   const p = await fakeApi.createProject('My Film');
   fs.dirs.add(FOLDER);
-  await lf.attachProjectFolder(p.id, FOLDER, format as 'odraft');
+  await lf.attachProjectFolder(p.id, FOLDER, format as 'writea');
   return p.id;
 }
 
@@ -283,12 +283,12 @@ describe('a project kept in a folder', () => {
     const pid = await folderProject();
     const id = await newScript(pid, 'Pilot', doc('draft one'));
     await save(pid, id, { content: doc('draft two') });
-    expect(fs.files.get(`${FOLDER}/Pilot.odraft`)?.text).toContain('draft two');
+    expect(fs.files.get(`${FOLDER}/Pilot.writea`)?.text).toContain('draft two');
 
     await save(pid, id, { title: 'Episode 1' });
-    expect(fs.files.has(`${FOLDER}/Pilot.odraft`)).toBe(false);
-    expect(fs.files.get(`${FOLDER}/Episode 1.odraft`)?.text).toContain('draft two');
-    expect((await lf.getLink(id))?.path).toBe(`${FOLDER}/Episode 1.odraft`);
+    expect(fs.files.has(`${FOLDER}/Pilot.writea`)).toBe(false);
+    expect(fs.files.get(`${FOLDER}/Episode 1.writea`)?.text).toContain('draft two');
+    expect((await lf.getLink(id))?.path).toBe(`${FOLDER}/Episode 1.writea`);
   });
 
   it('does not reformat a file a save leaves unchanged — opening a script must not touch it', async () => {
@@ -329,9 +329,9 @@ describe('a project kept in a folder', () => {
     const id = await newScript(pid, 'Pilot', doc('words'));
     const result = await lf.moveProjectFolder(pid, '/nas/MyFilm');
     expect(result).toEqual({ moved: 1, failed: [] });
-    expect(fs.files.has(`${FOLDER}/Pilot.odraft`)).toBe(false);
-    expect(fs.files.get('/nas/MyFilm/Pilot.odraft')?.text).toContain('words');
-    expect((await lf.getLink(id))?.path).toBe('/nas/MyFilm/Pilot.odraft');
+    expect(fs.files.has(`${FOLDER}/Pilot.writea`)).toBe(false);
+    expect(fs.files.get('/nas/MyFilm/Pilot.writea')?.text).toContain('words');
+    expect((await lf.getLink(id))?.path).toBe('/nas/MyFilm/Pilot.writea');
     expect(lib.projects.get(pid)?.properties.folder_path).toBe('/nas/MyFilm');
   });
 
@@ -340,7 +340,7 @@ describe('a project kept in a folder', () => {
     const id = await newScript(pid, 'Pilot', doc('words'));
     await lf.detachProjectFolder(pid);
     expect(await lf.getLink(id)).toBeNull();
-    expect(fs.files.has(`${FOLDER}/Pilot.odraft`)).toBe(true);
+    expect(fs.files.has(`${FOLDER}/Pilot.writea`)).toBe(true);
     expect(lib.projects.get(pid)?.properties.folder_path).toBe('');
   });
 });
@@ -361,32 +361,32 @@ describe('a file changed outside WriTea Draft', () => {
   it('is never overwritten by a save — the save stops and the question is raised', async () => {
     const pid = await folderProject();
     const id = await newScript(pid, 'Pilot', doc('mine'));
-    touch(`${FOLDER}/Pilot.odraft`, fs.files.get(`${FOLDER}/Pilot.odraft`)!.text.replace('mine', 'theirs'));
+    touch(`${FOLDER}/Pilot.writea`, fs.files.get(`${FOLDER}/Pilot.writea`)!.text.replace('mine', 'theirs'));
 
     await save(pid, id, { content: doc('mine, edited') });
-    expect(fs.files.get(`${FOLDER}/Pilot.odraft`)?.text).toContain('theirs');
+    expect(fs.files.get(`${FOLDER}/Pilot.writea`)?.text).toContain('theirs');
     expect(useLinkedFileStore.getState().byScript[id]?.state).toBe('conflict');
   });
 
   it("keeps the file's version as a copy when the writer keeps WriTea Draft's", async () => {
     const pid = await folderProject();
     const id = await newScript(pid, 'Pilot', doc('mine'));
-    touch(`${FOLDER}/Pilot.odraft`, fs.files.get(`${FOLDER}/Pilot.odraft`)!.text.replace('mine', 'theirs'));
+    touch(`${FOLDER}/Pilot.writea`, fs.files.get(`${FOLDER}/Pilot.writea`)!.text.replace('mine', 'theirs'));
     await save(pid, id, { content: doc('mine, edited') }); // blocked: conflict
 
     answerNextConflict('library');
     const result = await lf.syncScriptWithFile(pid, id);
     expect(result.kind).toBe('kept-library');
-    expect(fs.files.get(`${FOLDER}/Pilot.odraft`)?.text).toContain('mine, edited');
+    expect(fs.files.get(`${FOLDER}/Pilot.writea`)?.text).toContain('mine, edited');
     const preserved = result.kind === 'kept-library' ? result.preservedAs : null;
-    expect(preserved).toMatch(/Pilot \(changed outside WriTea Draft .*\)\.odraft$/);
+    expect(preserved).toMatch(/Pilot \(changed outside WriTea Draft .*\)\.writea$/);
     expect(fs.files.get(preserved!)?.text).toContain('theirs');
   });
 
   it("writes what is on screen, not just the last save, when the writer keeps WriTea Draft's", async () => {
     const pid = await folderProject();
     const id = await newScript(pid, 'Pilot', doc('saved draft'));
-    touch(`${FOLDER}/Pilot.odraft`, fs.files.get(`${FOLDER}/Pilot.odraft`)!.text.replace('saved draft', 'theirs'));
+    touch(`${FOLDER}/Pilot.writea`, fs.files.get(`${FOLDER}/Pilot.writea`)!.text.replace('saved draft', 'theirs'));
 
     // The editor holds edits the library does not have yet.
     const onScreen = doc('typed but not saved');
@@ -396,13 +396,13 @@ describe('a file changed outside WriTea Draft', () => {
       saveUnsavedEdits: async () => { await fakeApi.saveScript(pid, id, { content: onScreen }); },
     });
     expect(result.kind === 'kept-library' && result.unsavedStored).toBe(true);
-    expect(fs.files.get(`${FOLDER}/Pilot.odraft`)?.text).toContain('typed but not saved');
+    expect(fs.files.get(`${FOLDER}/Pilot.writea`)?.text).toContain('typed but not saved');
   });
 
   it("records WriTea Draft's version in Version History when the writer takes the file's", async () => {
     const pid = await folderProject();
     const id = await newScript(pid, 'Pilot', doc('mine'));
-    touch(`${FOLDER}/Pilot.odraft`, fs.files.get(`${FOLDER}/Pilot.odraft`)!.text.replace('mine', 'theirs'));
+    touch(`${FOLDER}/Pilot.writea`, fs.files.get(`${FOLDER}/Pilot.writea`)!.text.replace('mine', 'theirs'));
 
     answerNextConflict('file');
     const unsaved = vi.fn(async () => {});
@@ -428,7 +428,7 @@ describe('a drive that goes away', () => {
 
     fs.offline.clear();
     expect(await lf.retryPendingWrites()).toBe(0);
-    expect(fs.files.get(`${FOLDER}/Pilot.odraft`)?.text).toContain('written while offline');
+    expect(fs.files.get(`${FOLDER}/Pilot.writea`)?.text).toContain('written while offline');
     expect((await lf.getLink(id))?.pending).toBe(false);
   });
 
@@ -458,7 +458,7 @@ describe('a single script saved to a file', () => {
   it('refuses a format it cannot keep a script in', async () => {
     const p = await fakeApi.createProject('Library project');
     const created = await fakeApi.createScript(p.id, { title: 'Short', content: doc('tiny') });
-    await expect(lf.linkScriptToFile(p.id, created.meta.id, '/raid/Short.docx')).rejects.toThrow(/\.odraft/);
+    await expect(lf.linkScriptToFile(p.id, created.meta.id, '/raid/Short.docx')).rejects.toThrow(/\.writea/);
   });
 });
 

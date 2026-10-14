@@ -12,7 +12,7 @@
  * now go through this one function.
  *
  * Keep `SAVE_METADATA_KEYS` in step with the object built below — the backup
- * and .odraft round-trip tests assert the two agree.
+ * and .writea round-trip tests assert the two agree.
  */
 import type { Editor } from '@tiptap/react';
 import { useEditorStore } from '../stores/editorStore';

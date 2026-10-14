@@ -69,14 +69,14 @@
 		<dict>
 			<key>CFBundleTypeExtensions</key>
 			<array>
-				<string>odraft</string>
+				<string>writea</string>
 			</array>
 			<key>LSItemContentTypes</key>
 			<array>
 				<string>public.json</string>
 			</array>
 			<key>CFBundleTypeName</key>
-			<string>odraft</string>
+			<string>writea</string>
 			<key>CFBundleTypeRole</key>
 			<string>Editor</string>
 			<key>LSHandlerRank</key>
@@ -198,7 +198,7 @@
 			<dict>
 				<key>public.filename-extension</key>
 				<array>
-					<string>odraft</string>
+					<string>writea</string>
 				</array>
 				<key>public.mime-type</key>
 				<string>application/json</string>

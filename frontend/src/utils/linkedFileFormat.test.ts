@@ -32,7 +32,7 @@ const TREATMENT = {
 
 describe('formats', () => {
   it('accepts only the text formats a linked file can be in', () => {
-    expect(isLinkableExtension('odraft')).toBe(true);
+    expect(isLinkableExtension('writea')).toBe(true);
     expect(isLinkableExtension('FDX')).toBe(true);
     expect(isLinkableExtension('fountain')).toBe(true);
     expect(isLinkableExtension('osf')).toBe(true);
@@ -54,12 +54,12 @@ describe('formats', () => {
     expect(extensionOfPath('/mnt/raid/v1.2/README')).toBe('');
   });
 
-  it('keeps treatments and AV scripts in .odraft whatever the project prefers', () => {
-    expect(formatForScript('fdx', 'treatment', TREATMENT)).toBe('odraft');
-    expect(formatForScript('fountain', 'screenplay', TREATMENT)).toBe('odraft');
+  it('keeps treatments and AV scripts in .writea whatever the project prefers', () => {
+    expect(formatForScript('fdx', 'treatment', TREATMENT)).toBe('writea');
+    expect(formatForScript('fountain', 'screenplay', TREATMENT)).toBe('writea');
     const av = { type: 'doc', content: [{ type: 'avBlock', content: [] }] };
     expect(contentHasAv(av)).toBe(true);
-    expect(formatForScript('fdx', 'screenplay', av)).toBe('odraft');
+    expect(formatForScript('fdx', 'screenplay', av)).toBe('writea');
     expect(formatForScript('fdx', 'screenplay', SCREENPLAY)).toBe('fdx');
   });
 });
@@ -67,7 +67,7 @@ describe('formats', () => {
 describe('file names', () => {
   it('names a file after the script, made safe for every OS', () => {
     expect(linkedFileName('Pilot: Part 1/2', 'fountain')).toBe('Pilot Part 1 2.fountain');
-    expect(linkedFileName('', 'odraft')).toBe('Untitled.odraft');
+    expect(linkedFileName('', 'writea')).toBe('Untitled.writea');
     expect(projectFolderName('My Film?')).toBe('My Film');
   });
 
@@ -79,9 +79,9 @@ describe('file names', () => {
 });
 
 describe('writing and reading back', () => {
-  it('round-trips everything through .odraft, notes and beats included', async () => {
-    const text = serializeContentForFormat('odraft', SCREENPLAY, 'Rain');
-    const back = await parseLinkedFileText('Rain.odraft', text);
+  it('round-trips everything through .writea, notes and beats included', async () => {
+    const text = serializeContentForFormat('writea', SCREENPLAY, 'Rain');
+    const back = await parseLinkedFileText('Rain.writea', text);
     expect(back.title).toBe('Rain');
     expect(back.content._notes).toEqual(SCREENPLAY._notes);
     expect(back.content._beats).toEqual(SCREENPLAY._beats);
@@ -106,9 +106,9 @@ describe('writing and reading back', () => {
     expect(text).toContain('INT. HOUSE - DAY');
   });
 
-  it('recognises a treatment read back from .odraft', async () => {
-    const text = serializeContentForFormat('odraft', TREATMENT, 'Story');
-    expect((await parseLinkedFileText('Story.odraft', text)).scriptFormat).toBe('treatment');
+  it('recognises a treatment read back from .writea', async () => {
+    const text = serializeContentForFormat('writea', TREATMENT, 'Story');
+    expect((await parseLinkedFileText('Story.writea', text)).scriptFormat).toBe('treatment');
   });
 
   it('refuses a format it cannot write rather than writing something wrong', () => {

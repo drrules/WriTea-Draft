@@ -10,7 +10,7 @@
  * something the rest of a production already uses.
  *
  * The XLSX is written by hand on top of `jszip`, which the project already
- * depends on for `.odraft` packaging. An xlsx is a zip of XML parts, and the
+ * depends on for `.writea` packaging. An xlsx is a zip of XML parts, and the
  * subset needed for "a sheet of text cells with a header row" is small and
  * stable — small enough that it is not worth pulling a spreadsheet library and
  * its transitive tree into the bundle for it.

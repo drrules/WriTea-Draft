@@ -6,7 +6,7 @@
  * only `{ assetId, projectId, filename }` in the node attrs; a script with no
  * project yet uses the scratch store and a `scratchId` instead. Either way a
  * snapshot that carries just the document restores with every image broken —
- * which is why the .odraft v2 envelope has an `assets` array.
+ * which is why the .writea v2 envelope has an `assets` array.
  *
  * Packing is capped: a script with a dozen photos, snapshotted every ten
  * minutes with 25 retained, would otherwise fill a disk. When the cap is hit
@@ -14,7 +14,7 @@
  * dialog says so rather than silently restoring a broken script.
  */
 import type { JSONContent } from '@tiptap/react';
-import type { OdraftAsset } from '../utils/odraftFormat';
+import type { WriteaAsset } from '../utils/writeaFormat';
 import { api } from './api';
 import { collectScratchIds } from '../utils/scratchRefs';
 import { getScratchBytes, getScratchMeta, putScratchAssetWithId } from './scratchAssets';
@@ -117,8 +117,8 @@ export async function packAssets(
   projectId: string,
   refs: AssetRef[],
   capBytes: number = DEFAULT_ASSET_CAP_BYTES,
-): Promise<{ assets: OdraftAsset[]; truncated: boolean }> {
-  const assets: OdraftAsset[] = [];
+): Promise<{ assets: WriteaAsset[]; truncated: boolean }> {
+  const assets: WriteaAsset[] = [];
   let total = 0;
   let truncated = false;
 
@@ -166,11 +166,11 @@ export async function packAssets(
 export async function packScratchAssets(
   content: Record<string, unknown> | null | undefined,
   capBytes: number = DEFAULT_ASSET_CAP_BYTES,
-): Promise<{ assets: OdraftAsset[]; truncated: boolean }> {
+): Promise<{ assets: WriteaAsset[]; truncated: boolean }> {
   const ids = Array.from(collectScratchIds(content));
   if (!ids.length) return { assets: [], truncated: false };
 
-  const assets: OdraftAsset[] = [];
+  const assets: WriteaAsset[] = [];
   let total = 0;
   let truncated = false;
 
@@ -201,7 +201,7 @@ export async function packScratchAssets(
  * Put packed images back into the scratch store under their original ids, for a
  * document being restored or imported without a project.
  */
-export async function unpackScratchAssets(assets: OdraftAsset[]): Promise<number> {
+export async function unpackScratchAssets(assets: WriteaAsset[]): Promise<number> {
   if (!assets.length) return 0;
   let restored = 0;
   for (const asset of assets) {
@@ -222,7 +222,7 @@ export async function unpackScratchAssets(assets: OdraftAsset[]): Promise<number
  * restored document's references still resolve. Failures are logged, not
  * thrown: a restored script with a missing image beats a failed restore.
  */
-export async function unpackAssets(projectId: string, assets: OdraftAsset[]): Promise<number> {
+export async function unpackAssets(projectId: string, assets: WriteaAsset[]): Promise<number> {
   const importAsset = (api as unknown as {
     importAsset?: (p: string, a: { id: string; filename: string; mime_type: string; bytes: Uint8Array }) => Promise<void>;
   }).importAsset;

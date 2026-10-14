@@ -3,7 +3,7 @@
  *
  * The point of this format over the spreadsheet is that it keeps structure the
  * spreadsheet flattens: per-paragraph styles, blank cells, cue metadata and the
- * document's own settings. The point over `.odraft` is that a human can read
+ * document's own settings. The point over `.writea` is that a human can read
  * and edit it. Both of those are what these tests pin.
  */
 import { describe, it, expect } from 'vitest';

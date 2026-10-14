@@ -488,7 +488,7 @@ export interface PDFExportOptions {
    *
    * The writer's own preference, not the document's: rendered output — this,
    * print and DOCX — honours it, while the interchange formats (FDX, Fountain,
-   * Fade In/OSF and .odraft) always carry the title-page data whatever it says.
+   * Fade In/OSF and .writea) always carry the title-page data whatever it says.
    * Sending a script to a producer who wants the pages and nothing else should
    * not edit the script (issue #98).
    */

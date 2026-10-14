@@ -267,7 +267,7 @@ export async function putScratchAsset(
 /**
  * As `putScratchAsset`, but under a caller-chosen id.
  *
- * Restoring a `.odraft` needs this: the document being restored already carries
+ * Restoring a `.writea` needs this: the document being restored already carries
  * `scratchId` values, so the bytes have to come back under the same ids or every
  * reference in it dangles. Same reason `local-storage.importAsset` exists.
  */

@@ -17,7 +17,7 @@ import { DEFAULT_SCRIPT_PROFILE } from './scriptProfile';
 import { parseFDXFull } from './fdxParser';
 import { parseOSF, parseFadeIn, type DocumentFont } from './osfParser';
 import { COURIER_FONTS } from './fonts';
-import { parseOdraft } from './odraftFormat';
+import { parseWritea } from './writeaFormat';
 import { hydrateEditorStoresFromContent } from './hydrateStores';
 import { captureFdxRaw, settingsSignature } from './fdxPreserve';
 import { restoreRevisionState } from './revisionState';
@@ -291,15 +291,15 @@ export async function parseScreenplayImport(
     return { doc: parsed.doc, title: '', formatLabel, warnings: [], metadata: { ...fdxMetadata(parsed), _fdxRaw: fdxRaw } };
   }
 
-  if (ext === 'odraft') {
+  if (ext === 'writea') {
     let parsed;
     try {
-      parsed = parseOdraft(text);
+      parsed = parseWritea(text);
     } catch (err) {
-      throw new Error(`Invalid .odraft file: ${err instanceof Error ? err.message : String(err)}`);
+      throw new Error(`Invalid .writea file: ${err instanceof Error ? err.message : String(err)}`);
     }
     // Bring back notes, tags, beats and character profiles — without this an
-    // imported .odraft comes back as bare text with all of that dropped.
+    // imported .writea comes back as bare text with all of that dropped.
     if (hydrateStores) hydrateEditorStoresFromContent(parsed.content);
     // Images travel in the envelope's `assets` array. They were ignored here
     // entirely, so even a backup that had carefully packed them came back with
@@ -310,7 +310,7 @@ export async function parseScreenplayImport(
         const { unpackScratchAssets } = await import('../services/snapshotAssets');
         await unpackScratchAssets(parsed.assets);
       } catch (err) {
-        console.warn('[import] could not restore images from the .odraft file:', err);
+        console.warn('[import] could not restore images from the .writea file:', err);
       }
     }
     return {

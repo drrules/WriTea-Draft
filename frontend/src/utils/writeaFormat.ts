@@ -1,7 +1,7 @@
 /**
- * WriTea Draft native format (.odraft) — import/export utilities.
+ * WriTea Draft native format (.writea) — import/export utilities.
  *
- * An .odraft file is a JSON document containing the script metadata and
+ * An .writea file is a JSON document containing the script metadata and
  * TipTap content, designed for lossless round-tripping. It is also the format
  * automatic backups are written in, which is why fidelity matters here: a
  * snapshot that can't be fully restored is not a backup.
@@ -20,11 +20,11 @@
 
 import type { ScriptMeta } from '../services/api';
 
-export const ODRAFT_VERSION = 2;
+export const WRITEA_VERSION = 2;
 
 export type BackupKind = 'auto' | 'manual' | 'crash';
 
-export interface OdraftAsset {
+export interface WriteaAsset {
   id: string;
   filename: string;
   mime_type: string;
@@ -32,7 +32,7 @@ export interface OdraftAsset {
   data_base64: string;
 }
 
-export interface OdraftMeta {
+export interface WriteaMeta {
   title: string;
   author: string;
   color: string;
@@ -47,25 +47,25 @@ export interface OdraftMeta {
   assets_omitted?: boolean;
 }
 
-interface OdraftFile {
-  odraft_version: number;
-  format: 'writeadraft-script';
+interface WriteaFile {
+  writea_version: number;
+  format: 'writea-script';
   exported_at: string;
-  meta: OdraftMeta;
+  meta: WriteaMeta;
   content: Record<string, unknown>;
-  assets?: OdraftAsset[];
+  assets?: WriteaAsset[];
 }
 
-export interface ParsedOdraft {
-  meta: OdraftMeta;
+export interface ParsedWritea {
+  meta: WriteaMeta;
   content: Record<string, unknown>;
-  assets: OdraftAsset[];
-  /** Version the file declared; 0 for a bare payload recovered by parseOdraftLoose. */
+  assets: WriteaAsset[];
+  /** Version the file declared; 0 for a bare payload recovered by parseWriteaLoose. */
   version: number;
 }
 
-export interface ExportOdraftOptions {
-  assets?: OdraftAsset[];
+export interface ExportWriteaOptions {
+  assets?: WriteaAsset[];
   backupKind?: BackupKind;
   projectId?: string | null;
   scriptId?: string | null;
@@ -76,27 +76,27 @@ export interface ExportOdraftOptions {
   exportedAt?: string;
 }
 
-/** Build an .odraft JSON blob from script metadata and content. */
-export function exportOdraft(
+/** Build an .writea JSON blob from script metadata and content. */
+export function exportWritea(
   meta: ScriptMeta,
   content: Record<string, unknown>,
-  options: ExportOdraftOptions = {},
+  options: ExportWriteaOptions = {},
 ): Blob {
-  return new Blob([serializeOdraft(meta, content, options)], {
+  return new Blob([serializeWritea(meta, content, options)], {
     type: 'application/json',
   });
 }
 
-/** The .odraft JSON text. Separated from the Blob so callers that write to a
+/** The .writea JSON text. Separated from the Blob so callers that write to a
  *  file (backups) don't have to round-trip through Blob.text(). */
-export function serializeOdraft(
+export function serializeWritea(
   meta: ScriptMeta,
   content: Record<string, unknown>,
-  options: ExportOdraftOptions = {},
+  options: ExportWriteaOptions = {},
 ): string {
-  const data: OdraftFile = {
-    odraft_version: ODRAFT_VERSION,
-    format: 'writeadraft-script',
+  const data: WriteaFile = {
+    writea_version: WRITEA_VERSION,
+    format: 'writea-script',
     exported_at: options.exportedAt || new Date().toISOString(),
     meta: {
       title: meta.title,
@@ -116,41 +116,41 @@ export function serializeOdraft(
   return JSON.stringify(data, null, 2);
 }
 
-/** Download a script as an .odraft file. */
-export async function downloadOdraft(
+/** Download a script as an .writea file. */
+export async function downloadWritea(
   meta: ScriptMeta,
   content: Record<string, unknown>,
-  options: ExportOdraftOptions = {},
+  options: ExportWriteaOptions = {},
 ): Promise<void> {
-  const text = serializeOdraft(meta, content, options);
-  const filename = `${meta.title || 'Untitled'}.odraft`;
+  const text = serializeWritea(meta, content, options);
+  const filename = `${meta.title || 'Untitled'}.writea`;
   const { saveFile } = await import('./fileOps');
-  await saveFile(text, filename, [{ name: 'WriTea Draft', extensions: ['odraft'] }]);
+  await saveFile(text, filename, [{ name: 'WriTea Draft', extensions: ['writea'] }]);
 }
 
-/** Parse an .odraft JSON string back into meta + content. */
-export function parseOdraft(jsonText: string): ParsedOdraft {
+/** Parse an .writea JSON string back into meta + content. */
+export function parseWritea(jsonText: string): ParsedWritea {
   let data: any;
   try {
     data = JSON.parse(jsonText);
   } catch {
-    throw new Error('Invalid .odraft file: not valid JSON');
+    throw new Error('Invalid .writea file: not valid JSON');
   }
 
-  if (data.format !== 'writeadraft-script') {
-    throw new Error('Invalid .odraft file: unrecognized format');
+  if (data.format !== 'writea-script') {
+    throw new Error('Invalid .writea file: unrecognized format');
   }
-  if (typeof data.odraft_version !== 'number') {
-    throw new Error('Invalid .odraft file: missing version');
+  if (typeof data.writea_version !== 'number') {
+    throw new Error('Invalid .writea file: missing version');
   }
-  if (data.odraft_version > ODRAFT_VERSION) {
+  if (data.writea_version > WRITEA_VERSION) {
     throw new Error(
-      `This .odraft file was created by a newer version of WriTea Draft (format v${data.odraft_version}). Update WriTea Draft to open it.`,
+      `This .writea file was created by a newer version of WriTea Draft (format v${data.writea_version}). Update WriTea Draft to open it.`,
     );
   }
 
   return {
-    version: data.odraft_version,
+    version: data.writea_version,
     meta: {
       title: data.meta?.title || 'Untitled',
       author: data.meta?.author || '',
@@ -169,23 +169,23 @@ export function parseOdraft(jsonText: string): ParsedOdraft {
 }
 
 /**
- * Parse an .odraft file, falling back to accepting a bare payload.
+ * Parse an .writea file, falling back to accepting a bare payload.
  *
  * Older builds wrote crash backups as the raw `buildSaveContent()` object with
- * no envelope, which `parseOdraft` rejects — meaning WriTea Draft could not open
+ * no envelope, which `parseWritea` rejects — meaning WriTea Draft could not open
  * its own emergency backup. Any such file already on a user's disk is
  * recoverable here: if the JSON has no envelope but looks like a ProseMirror
  * document, treat the whole object as the content.
  */
-export function parseOdraftLoose(jsonText: string): ParsedOdraft {
+export function parseWriteaLoose(jsonText: string): ParsedWritea {
   let data: any;
   try {
     data = JSON.parse(jsonText);
   } catch {
-    throw new Error('Invalid .odraft file: not valid JSON');
+    throw new Error('Invalid .writea file: not valid JSON');
   }
 
-  if (data?.format === 'writeadraft-script') return parseOdraft(jsonText);
+  if (data?.format === 'writea-script') return parseWritea(jsonText);
 
   if (data?.type === 'doc') {
     return {
@@ -196,5 +196,5 @@ export function parseOdraftLoose(jsonText: string): ParsedOdraft {
     };
   }
 
-  throw new Error('Invalid .odraft file: unrecognized format');
+  throw new Error('Invalid .writea file: unrecognized format');
 }

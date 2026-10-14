@@ -33,7 +33,7 @@ the file.
 | Concern | Behaviour |
 |---|---|
 | Saving | `local-storage` calls the `after…` hooks in `services/linkedFiles.ts` after every create / save / rename / duplicate / delete / version restore, so every save path reaches the file. |
-| Formats | `.odraft` (keeps everything), `.fountain`, `.fdx`; `.osf` files found in a folder too. Treatments and AV scripts are always `.odraft`. `.fadein` is not linkable (binary, non-atomic write). Serialising lives in `utils/linkedFileFormat.ts`, which Save on a file opened from disk now uses as well. |
+| Formats | `.writea` (keeps everything), `.fountain`, `.fdx`; `.osf` files found in a folder too. Treatments and AV scripts are always `.writea`. `.fadein` is not linkable (binary, non-atomic write). Serialising lives in `utils/linkedFileFormat.ts`, which Save on a file opened from disk now uses as well. |
 | Atomic writes | `save_text_atomic` (temp file + rename), with a 10 s timeout. |
 | Drive offline | The library save succeeds; the link is marked pending and retried every minute and on window focus (`LinkedFileSync`). The status bar says "not saved to file". |
 | Changed elsewhere | Before writing, the file's mtime/hash is compared with what WriTea Draft last wrote. A changed file is never overwritten: the link goes to `conflict`. On open and on window focus the file is re-checked — loaded if the library has nothing new, otherwise the writer is asked. |
@@ -90,7 +90,7 @@ paths). The auto-save settings apply everywhere.
 
 - The treatment editor still auto-saves on its own 1.2 s debounce regardless
   of the auto-save setting (it has no unsaved-changes prompt to fall back on).
-- Linked `.odraft` files do not embed images (they would be rewritten on every
+- Linked `.writea` files do not embed images (they would be rewritten on every
   save); images stay in the library's assets.
 - Two projects cannot share one folder file; a scan skips files another
   project already links.

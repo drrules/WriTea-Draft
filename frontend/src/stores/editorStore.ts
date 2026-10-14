@@ -700,10 +700,10 @@ interface EditorState {
    *
    * Kept here rather than on `PageLayout` because it is the writer's habit, not
    * the script's: it belongs to the person printing, follows them from one
-   * document to the next, and must not travel inside a .odraft file or a collab
+   * document to the next, and must not travel inside a .writea file or a collab
    * session. Persisted per device in the view state (issue #98).
    *
-   * Only rendered output honours it. FDX, Fountain, Fade In/OSF and .odraft
+   * Only rendered output honours it. FDX, Fountain, Fade In/OSF and .writea
    * always carry the title-page data — sending a script somewhere is not the
    * same as editing it.
    */
