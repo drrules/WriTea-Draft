@@ -1,4 +1,5 @@
 // Final Draft XML (.fdx) exporter — full formatting & layout support
+import { foldCastDescription } from './castNotes';
 import type { JSONContent } from '@tiptap/react';
 import type { CharacterProfile, TagCategory, TagItem, BeatInfo, BeatColumn, PageLayout } from '../stores/editorStore';
 import { resolveHeaderFooter } from '../stores/editorStore';
@@ -778,7 +779,7 @@ export function exportFDX(doc: JSONContent, _title: string = 'Untitled', charact
     lines.push('');
     lines.push('  <CastList>');
     for (const p of characterProfiles) {
-      const plainDesc = stripHtml(p.description);
+      const plainDesc = foldCastDescription(p, stripHtml);
       if (plainDesc) {
         lines.push(`    <CastMember>`);
         lines.push(`      <Name>${esc(p.name)}</Name>`);

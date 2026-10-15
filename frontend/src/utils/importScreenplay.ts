@@ -11,6 +11,7 @@
  * title, clearing project context, marking the source — because those differ
  * between entry points.
  */
+import { splitCastDescription } from './castNotes';
 import type { JSONContent } from '@tiptap/react';
 import { parseFountain } from './fountainParser';
 import { DEFAULT_SCRIPT_PROFILE } from './scriptProfile';
@@ -187,7 +188,7 @@ function applyFdxSideEffects(parsed: ReturnType<typeof parseFDXFull>): void {
     for (const member of parsed.castList) {
       const hl = highlightMap.get(member.name.toUpperCase());
       store.upsertCharacterProfile(member.name, {
-        description: member.description,
+        ...splitCastDescription(member.description),
         color: hl?.color || '',
         highlighted: hl?.highlighted || false,
       });

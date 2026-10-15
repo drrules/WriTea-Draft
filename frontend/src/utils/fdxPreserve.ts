@@ -175,11 +175,18 @@ export function titleLineSignature(
 export function settingsSignature(
   pageLayout: unknown,
   font: { family?: string; size?: unknown } | undefined,
-  profiles: ReadonlyArray<{ name?: string; description?: string }> | undefined,
+  profiles: ReadonlyArray<Partial<Record<
+    'name' | 'description' | 'gender' | 'age' | 'role' | 'backstory' | 'arc' | 'speechPattern' | 'vocabulary' | 'verbalTics' | 'sampleDialogue',
+    string
+  >>> | undefined,
 ): SettingsSignature {
   return {
     layout: JSON.stringify([pageLayout ?? null, font?.family ?? '', Number(font?.size) || 0]),
-    cast: JSON.stringify((profiles ?? []).map((p) => [p.name ?? '', p.description ?? ''])),
+    // Everything folded into the cast description counts, or an edit to a backstory would be skipped.
+    cast: JSON.stringify((profiles ?? []).map((p) => [
+      p.name ?? '', p.description ?? '', p.gender ?? '', p.age ?? '', p.role ?? '', p.backstory ?? '',
+      p.arc ?? '', p.speechPattern ?? '', p.vocabulary ?? '', p.verbalTics ?? '', p.sampleDialogue ?? '',
+    ])),
   };
 }
 
