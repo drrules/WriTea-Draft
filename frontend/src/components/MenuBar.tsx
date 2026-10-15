@@ -370,9 +370,17 @@ const MenuBar: React.FC<MenuBarProps> = ({
       // notes, beats and profiles .writea keeps and .fdx partly does.
       const content = buildSaveContent();
       if (!content) throw new Error('No document is open.');
+      // A .writea carries its own pictures. No size cap here: the cap exists
+      // for crash snapshots, and this is the writer's own file.
+      let assets: import('../utils/writeaFormat').WriteaAsset[] | undefined;
+      if (format === 'writea') {
+        const { packScratchAssets } = await import('../services/snapshotAssets');
+        assets = (await packScratchAssets(content, Number.POSITIVE_INFINITY)).assets;
+      }
       return serializeContentForFormat(format, content, s.documentTitle, {
         font: { family: s.fontFamily, size: s.fontSize },
         meta: { page_count: s.pageCount },
+        assets,
       });
     },
     [editor, buildSaveContent],

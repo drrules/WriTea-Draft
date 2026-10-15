@@ -18,7 +18,7 @@ import type { ScriptMeta } from '../services/api';
 import { exportFDX } from './fdxExporter';
 import { exportFountain } from './fountainExporter';
 import { exportOSF } from './osfExporter';
-import { serializeWritea } from './writeaFormat';
+import { serializeWritea, type WriteaAsset } from './writeaFormat';
 import { mergeFdxRaw, isFdxRaw, settingsSignature } from './fdxPreserve';
 import { stripSaveMetadata } from './saveContent';
 import { readRevisionState } from './revisionState';
@@ -120,6 +120,8 @@ export interface SerializeOptions {
   font?: { family: string; size: number };
   /** Script metadata for the .writea envelope. */
   meta?: Partial<ScriptMeta>;
+  /** Pictures to carry inside a .writea file (ignored by every other format). */
+  assets?: WriteaAsset[];
 }
 
 /**
@@ -174,6 +176,7 @@ export function serializeContentForFormat(
           title,
         },
         content,
+        options.assets && options.assets.length > 0 ? { assets: options.assets } : {},
       );
     default:
       throw new Error(`WriTea Draft cannot write .${format} files.`);
