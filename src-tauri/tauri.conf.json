@@ -69,7 +69,9 @@
         "desktopTemplate": "linux/hidden-launcher.desktop",
         "files": {
           "/usr/share/applications/writeadraft.desktop": "linux/writeadraft.desktop",
-          "/usr/share/mime/packages/writeadraft.xml": "linux/writeadraft-mime.xml"
+          "/usr/share/mime/packages/writeadraft.xml": "linux/writeadraft-mime.xml",
+          "/usr/share/icons/hicolor/scalable/mimetypes/application-x-writea.svg": "linux/icons/application-x-writea.svg",
+          "/usr/share/icons/hicolor/scalable/mimetypes/application-x-fdx.svg": "linux/icons/application-x-fdx.svg"
         }
       }
     },
