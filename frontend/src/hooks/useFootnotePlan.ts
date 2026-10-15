@@ -15,8 +15,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { Editor } from '@tiptap/react';
 import { useEditorStore } from '../stores/editorStore';
 import { useAssetStore } from '../stores/assetStore';
-import { useProjectStore } from '../stores/projectStore';
-import { api } from '../services/api';
+import { scriptAssetUrl } from '../utils/scriptAssetUrl';
 import { buildFootnotePlan, type FootnotePlan } from '../utils/footnotes';
 import type { NoteRenderContext } from '../utils/noteContent';
 
@@ -26,16 +25,14 @@ const SETTLE_MS = 150;
 /** Asset resolution for note bodies, shared by the panel and the page. */
 export function useNoteRenderContext(): NoteRenderContext {
   const { assets } = useAssetStore();
-  const { currentProject } = useProjectStore();
-  const projectId = currentProject?.id ?? null;
   return useMemo(
     () => ({
       assets,
-      // Without a project there is no URL to fetch from, and the reference
-      // falls back to its literal text rather than printing nothing at all.
-      assetUrl: (a) => (projectId ? api.getAssetUrl(projectId, a.id) : null),
+      // An asset with no URL yet falls back to its literal text rather than
+      // printing nothing at all.
+      assetUrl: (a) => scriptAssetUrl(a.id) || null,
     }),
-    [assets, projectId],
+    [assets],
   );
 }
 

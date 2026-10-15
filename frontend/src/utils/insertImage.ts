@@ -169,7 +169,7 @@ export function imageFilesFrom(dt: DataTransfer | null | undefined): File[] {
 }
 
 /** List a freshly stored picture in the open script's Asset Manager. */
-function registerScriptAsset(
+export function registerScriptAsset(
   meta: { id: string; filename: string; mimeType: string; sizeBytes: number },
   originalName: string,
   tags: string[],

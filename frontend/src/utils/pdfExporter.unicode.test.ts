@@ -155,7 +155,10 @@ describe('a Latin screenplay', () => {
     // The font bytes are cached across exports; a Latin script must still come
     // out of a clean Standard 14 path afterwards. Only the file id, which jsPDF
     // stamps per document, is allowed to differ.
-    const withoutFileId = (pdf: string) => pdf.replace(/\/ID \[[^\]]*\]/, '');
+    // The creation time is stamped to the second, so two exports a tick apart
+    // differ by it; it is not part of what this test is about.
+    const withoutFileId = (pdf: string) =>
+      pdf.replace(/\/ID \[[^\]]*\]/, '').replace(/\/CreationDate \([^)]*\)/, '');
     const before = withoutFileId(await exportBytes(latin));
     await exportBytes(cyrillic);
     expect(withoutFileId(await exportBytes(latin))).toBe(before);

@@ -10,8 +10,7 @@
 import type { JSONContent } from '@tiptap/react';
 import type { GeneralNote, NoteInfo, PageLayout } from '../stores/editorStore';
 import { useAssetStore } from '../stores/assetStore';
-import { useProjectStore } from '../stores/projectStore';
-import { api } from '../services/api';
+import { scriptAssetUrl } from '../utils/scriptAssetUrl';
 import { buildFootnotePlan, type FootnotePlan } from './footnotes';
 
 export function buildExportFootnotePlan(
@@ -22,10 +21,9 @@ export function buildExportFootnotePlan(
 ): FootnotePlan | null {
   try {
     const assets = useAssetStore.getState().assets;
-    const projectId = useProjectStore.getState().currentProject?.id ?? null;
     return buildFootnotePlan(doc, layout, notes, {
       assets,
-      assetUrl: (a) => (projectId ? api.getAssetUrl(projectId, a.id) : null),
+      assetUrl: (a) => scriptAssetUrl(a.id) || null,
     }, generalNotes);
   } catch (err) {
     // An export must never fail because the notes could not be read.

@@ -6,7 +6,9 @@ import { useEditorStore, type CharacterProfile, type CharacterRelationship } fro
 import { useProjectStore } from '../stores/projectStore';
 import { characterKey, singleLine } from '../utils/nodeText';
 import { useAssetStore } from '../stores/assetStore';
-import { api } from '../services/api';
+import { putScratchAsset } from '../services/scratchAssets';
+import { registerScriptAsset } from '../utils/insertImage';
+import { scriptAssetUrl } from '../utils/scriptAssetUrl';
 import { showToast } from './Toast';
 import MiniRichText from './MiniRichText';
 import { RelationshipMap } from './RelationshipMap';
@@ -88,11 +90,10 @@ const InlineRelForm: React.FC<{
 
 interface CharacterProfilesProps {
   editor: Editor | null;
-  projectId: string;
   style?: React.CSSProperties;
 }
 
-const CharacterProfiles: React.FC<CharacterProfilesProps> = ({ editor, projectId, style }) => {
+const CharacterProfiles: React.FC<CharacterProfilesProps> = ({ editor, style }) => {
   const {
     characters,
     characterProfiles,
@@ -108,7 +109,7 @@ const CharacterProfiles: React.FC<CharacterProfilesProps> = ({ editor, projectId
   } = useEditorStore();
 
   const currentScriptId = useProjectStore((s) => s.currentScriptId);
-  const { assets, setAssets } = useAssetStore();
+  const { assets } = useAssetStore();
 
   const [activeTab, setActiveTab] = useState<'profiles' | 'map'>('profiles');
   const [addRelFor, setAddRelFor] = useState<string | null>(null); // character name to add rel for
@@ -130,20 +131,6 @@ const CharacterProfiles: React.FC<CharacterProfilesProps> = ({ editor, projectId
   const uploadTargetRef = useRef<string | null>(null);
   const [uploading, setUploading] = useState(false);
 
-  // Fetch project assets when image picker opens
-  const fetchAssets = useCallback(async () => {
-    if (!projectId) return;
-    try {
-      const list = await api.listAssets(projectId);
-      setAssets(list);
-    } catch (err) {
-      console.warn('Failed to fetch assets:', err);
-    }
-  }, [projectId, setAssets]);
-
-  useEffect(() => {
-    if (imagePickerFor && projectId) fetchAssets();
-  }, [imagePickerFor, projectId, fetchAssets]);
 
   // When a character is clicked in the editor, expand it in the panel
   useEffect(() => {
@@ -515,33 +502,29 @@ const CharacterProfiles: React.FC<CharacterProfilesProps> = ({ editor, projectId
   }, []);
 
   // Image helpers
-  const getAssetUrl = useCallback((assetId: string) => {
-    return api.getAssetUrl(projectId, assetId);
-  }, [projectId]);
+  const getAssetUrl = useCallback((assetId: string) => scriptAssetUrl(assetId), []);
 
   const imageAssets = useMemo(() => {
     return assets.filter((a) => a.mime_type.startsWith('image/'));
   }, [assets]);
 
   const handleUploadImage = useCallback(async (charName: string, file: File) => {
-    if (!projectId) return;
     setUploading(true);
     try {
-      const data = await api.uploadAsset(projectId, file, [`character:${charName}`]);
-      const assetId = data.id || data.asset?.id;
-      if (assetId) {
-        const profile = characterProfiles.find((p) => p.name === charName);
-        const currentImages = profile?.images || [];
-        upsertCharacterProfile(charName, { images: [...currentImages, assetId] });
-      }
-      await fetchAssets();
-      showToast('Image uploaded', 'success');
+      const meta = await putScratchAsset(file, file.name);
+      if (!meta) throw new Error('The image could not be stored.');
+      registerScriptAsset(meta, file.name, [`character:${charName}`]);
+      const profile = characterProfiles.find((p) => p.name === charName);
+      const currentImages = profile?.images || [];
+      upsertCharacterProfile(charName, { images: [...currentImages, meta.id] });
+      useEditorStore.getState().setSaveStatus('unsaved');
+      showToast('Image added', 'success');
     } catch (err) {
-      showToast(`Image upload failed: ${err instanceof Error ? err.message : 'Unknown error'}`, 'error');
+      showToast(`Could not add the image: ${err instanceof Error ? err.message : 'Unknown error'}`, 'error');
     } finally {
       setUploading(false);
     }
-  }, [projectId, characterProfiles, upsertCharacterProfile, fetchAssets]);
+  }, [characterProfiles, upsertCharacterProfile]);
 
   const handleAssociateAsset = useCallback((charName: string, assetId: string) => {
     const profile = characterProfiles.find((p) => p.name === charName);
@@ -632,7 +615,7 @@ const CharacterProfiles: React.FC<CharacterProfilesProps> = ({ editor, projectId
         </div>
 
         {/* Images */}
-        {prof.images && prof.images.length > 0 && projectId && (
+        {prof.images && prof.images.length > 0 && (
           <div className="char-profile-images">
             <div className="char-profile-images-primary">
               <img
@@ -675,7 +658,7 @@ const CharacterProfiles: React.FC<CharacterProfilesProps> = ({ editor, projectId
           </div>
         )}
 
-        {projectId && (
+        {(
           <div className="char-profile-image-actions">
             <button
               className="char-profile-img-btn"
@@ -993,7 +976,7 @@ const CharacterProfiles: React.FC<CharacterProfilesProps> = ({ editor, projectId
                   onClick={() => setExpandedChar(isExpanded ? null : name)}
                 >
                   {/* Avatar: show primary image or color swatch */}
-                  {primaryImageId && projectId ? (
+                  {primaryImageId ? (
                     <img
                       src={getAssetUrl(primaryImageId)}
                       alt={name}
@@ -1133,7 +1116,7 @@ const CharacterProfiles: React.FC<CharacterProfilesProps> = ({ editor, projectId
 
                       {/* Images section */}
                       <div className="char-profile-detail-media">
-                        {profile.images && profile.images.length > 0 && projectId && (
+                        {profile.images && profile.images.length > 0 && (
                           <div className="char-profile-images">
                             <div className="char-profile-images-primary">
                               <img
@@ -1176,7 +1159,7 @@ const CharacterProfiles: React.FC<CharacterProfilesProps> = ({ editor, projectId
                           </div>
                         )}
 
-                        {projectId && (
+                        {(
                           <div className="char-profile-image-actions">
                             <button
                               className="char-profile-img-btn"
@@ -1409,7 +1392,7 @@ const CharacterProfiles: React.FC<CharacterProfilesProps> = ({ editor, projectId
             </div>
             <div className="char-image-picker-grid">
               {imageAssets.length === 0 ? (
-                <div className="char-profiles-empty">No image assets in this project. Upload images via the Asset Manager or the Upload button on a character.</div>
+                <div className="char-profiles-empty">No images in this script yet. Add images in the Asset Manager or with the Upload button on a character.</div>
               ) : (
                 imageAssets
                   .filter((a) => !imagePickerFilter || a.original_name.toLowerCase().includes(imagePickerFilter.toLowerCase()))

@@ -10,8 +10,7 @@ import {
   type NoteFilter,
 } from '../stores/editorStore';
 import { useAssetStore, type Asset } from '../stores/assetStore';
-import { useProjectStore } from '../stores/projectStore';
-import { api } from '../services/api';
+import { scriptAssetUrl } from '../utils/scriptAssetUrl';
 import { isTauri, openExternal } from '../services/platform';
 import { FaCrosshairs, FaTrash } from 'react-icons/fa';
 import {
@@ -67,8 +66,7 @@ const toEmbedUrl = (url: string): string | null => {
 const NoteContentDisplay: React.FC<{
   content: string;
   assets: Asset[];
-  projectId: string | null;
-}> = ({ content, assets, projectId }) => {
+}> = ({ content, assets }) => {
   if (!content) return null;
 
   const lines = content.split('\n');
@@ -137,9 +135,7 @@ const NoteContentDisplay: React.FC<{
         );
         if (asset) {
           const isImg = asset.mime_type.startsWith('image/');
-          const url = projectId
-            ? api.getAssetUrl(projectId, asset.id)
-            : '#';
+          const url = scriptAssetUrl(asset.id) || '#';
           if (isImg) {
             lineElements.push(
               <span key={j} className="note-asset-ref">
@@ -214,8 +210,6 @@ const ScriptNotes: React.FC<ScriptNotesProps> = ({ editor, style }) => {
   } = useEditorStore();
 
   const { assets } = useAssetStore();
-  const { currentProject } = useProjectStore();
-  const projectId = currentProject?.id ?? null;
 
   // Which notes print, and what number each will carry. Null while nothing
   // prints, which is what keeps the panel exactly as it was for everyone who
@@ -843,7 +837,6 @@ const ScriptNotes: React.FC<ScriptNotesProps> = ({ editor, style }) => {
                       <NoteContentDisplay
                         content={note.content}
                         assets={assets}
-                        projectId={projectId}
                       />
                     ) : (
                       <span className="note-item-placeholder">Click to add note...</span>
@@ -973,7 +966,7 @@ const ScriptNotes: React.FC<ScriptNotesProps> = ({ editor, style }) => {
                       >
                         {gn.title && <div className="general-note-title">{gn.title}</div>}
                         {gn.content ? (
-                          <NoteContentDisplay content={gn.content} assets={assets} projectId={projectId} />
+                          <NoteContentDisplay content={gn.content} assets={assets} />
                         ) : (
                           <span className="note-item-placeholder">
                             {gn.title ? '' : 'Click to add note...'}
