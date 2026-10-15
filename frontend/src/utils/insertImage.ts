@@ -1,7 +1,5 @@
 import type { Editor } from '@tiptap/react';
 import { NodeSelection, TextSelection } from '@tiptap/pm/state';
-import { api } from '../services/api';
-import { useProjectStore } from '../stores/projectStore';
 import { useAssetStore } from '../stores/assetStore';
 import { putScratchAsset } from '../services/scratchAssets';
 import { showToast } from '../components/Toast';
@@ -108,17 +106,6 @@ export async function buildImageAttrs(
     src: null,
     align: 'center',
   } as BuiltImageAttrs;
-
-  const currentProject = useProjectStore.getState().currentProject;
-  if (currentProject) {
-    const asset = await api.uploadAsset(currentProject.id, file, tags);
-    return {
-      ...base,
-      assetId: asset.id,
-      projectId: currentProject.id,
-      filename: asset.filename ?? file.name,
-    };
-  }
 
   const scratch = await putScratchAsset(file, file.name);
   if (scratch) {
