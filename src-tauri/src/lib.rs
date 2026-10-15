@@ -2880,9 +2880,21 @@ pub fn run() {
         .register_uri_scheme_protocol("asset", |_app, request| {
             let uri = request.uri();
             let raw_path = uri.path();
-            // Decode percent-encoded path and strip leading slash
+            // Decode the percent-encoded path. The URL's own leading slash is
+            // dropped, then the root slash is put back for macOS, Linux and
+            // Android paths (/Users/..., /home/...). Windows drive paths (C:\...)
+            // and network paths (\\server\...) are used as they are.
             let decoded = percent_decode_str(raw_path).decode_utf8_lossy();
-            let file_path_str = decoded.trim_start_matches('/');
+            let trimmed = decoded.trim_start_matches('/');
+            let tb = trimmed.as_bytes();
+            let has_drive = tb.len() >= 2 && tb[0].is_ascii_alphabetic() && tb[1] == b':';
+            let is_network = trimmed.starts_with('\\');
+            let rooted: String = if has_drive || is_network {
+                trimmed.to_string()
+            } else {
+                format!("/{}", trimmed)
+            };
+            let file_path_str: &str = rooted.as_str();
             let file_path = std::path::Path::new(file_path_str);
 
             // Build a Response without unwrapping — a panic here aborts the
