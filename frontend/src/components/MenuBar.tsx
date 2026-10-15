@@ -1,3 +1,4 @@
+import { useVersionStore } from '../stores/versionStore';
 import { writeaOnlyContent } from '../utils/writeaOnly';
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
@@ -1638,6 +1639,7 @@ const MenuBar: React.FC<MenuBarProps> = ({
     store.setFdxRaw(null);
     store.setDocumentTitle('Untitled Screenplay');
     useAssetStore.getState().setAssets([]);
+    useVersionStore.getState().setVersions([]);
     store.setBeats([]);
     store.setBeatColumns([]);
     store.setBeatArrangeMode('auto');

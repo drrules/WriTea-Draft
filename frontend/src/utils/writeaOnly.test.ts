@@ -14,4 +14,9 @@ describe('writeaOnlyContent', () => {
   it('flags character relationships', () => {
     expect(writeaOnlyContent({ '_characterRelationships': [{ id: 'r1' }] })).toContain('character relationships');
   });
+
+  it('flags version history', () => {
+    expect(writeaOnlyContent({ _versions: [{ id: 'v1' }] })).toContain('version history');
+    expect(writeaOnlyContent({ _versions: [] })).toEqual([]);
+  });
 });

@@ -14,5 +14,7 @@ export function writeaOnlyContent(content: Record<string, unknown> | null | unde
   if (collectScratchIds(content).size > 0) reasons.push('pictures and assets');
   const relationships = content['_characterRelationships'];
   if (Array.isArray(relationships) && relationships.length > 0) reasons.push('character relationships');
+  const versions = content['_versions'];
+  if (Array.isArray(versions) && versions.length > 0) reasons.push('version history');
   return reasons;
 }

@@ -12,6 +12,8 @@
  * grammar rules and the grammar toggle. Auto spell check itself is an
  * app-wide setting and is not part of the file.
  */
+import { useVersionStore } from '../stores/versionStore';
+import { sanitizeStoredVersions } from '../services/scriptVersions';
 import { useEditorStore, DEFAULT_TAG_CATEGORIES, DEFAULT_PAGE_LAYOUT } from '../stores/editorStore';
 import { useFormattingTemplateStore } from '../stores/formattingTemplateStore';
 import { hasSaveMetadata } from './saveContent';
@@ -105,6 +107,7 @@ export function hydrateEditorStoresFromContent(
   store.setGrammarCheckEnabled(c._grammarCheckEnabled === true);
   const assetList = parseAttr<unknown>(c._assets, []);
   useAssetStore.getState().setAssets(Array.isArray(assetList) ? (assetList as Asset[]) : []);
+  useVersionStore.getState().setVersions(sanitizeStoredVersions(parseAttr<unknown>(c._versions, [])));
 
   if (typeof c._templateId === 'string' && c._templateId) {
     try {

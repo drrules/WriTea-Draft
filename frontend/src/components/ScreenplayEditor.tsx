@@ -1,3 +1,4 @@
+import { useVersionStore } from '../stores/versionStore';
 import React, { useEffect, useCallback, useRef, useState, useMemo } from 'react';
 import { useEditor, EditorContent, type Editor } from '@tiptap/react';
 import Document from '@tiptap/extension-document';
@@ -2843,6 +2844,7 @@ const ScreenplayEditor: React.FC = () => {
           store.setBeats([]);
           store.setBeatColumns([]);
           useAssetStore.getState().setAssets([]);
+          useVersionStore.getState().setVersions([]);
           store.setPageLayout({ ...DEFAULT_PAGE_LAYOUT });
           // Pacing and genres; a script without them opens as Standard.
           store.setScriptProfile(normalizeScriptProfile((content as Record<string, unknown> | null | undefined)?._scriptProfile));
@@ -3345,6 +3347,7 @@ const ScreenplayEditor: React.FC = () => {
         store.setBeats([]);
         store.setBeatColumns([]);
         useAssetStore.getState().setAssets([]);
+        useVersionStore.getState().setVersions([]);
         store.setPageLayout({ ...DEFAULT_PAGE_LAYOUT });
         store.setScriptProfile(normalizeScriptProfile((content as Record<string, unknown> | null | undefined)?._scriptProfile));
         // Default per-doc grammar to off; the block below overrides
