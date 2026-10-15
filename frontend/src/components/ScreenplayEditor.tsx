@@ -1798,9 +1798,12 @@ const ScreenplayEditor: React.FC = () => {
 
       // Filter known characters that start with typed text (exclude exact match)
       // Only match against base names (without extensions)
-      const matches = knownCharacters.filter(
-        n => n.startsWith(text) && n !== text,
-      );
+      // Names in the script plus any added by hand in the Characters panel,
+      // so a cast can be preloaded before anyone has spoken.
+      const presetNames = useEditorStore.getState().characterProfiles.map((p) => p.name);
+      const matches = Array.from(new Set([...knownCharacters, ...presetNames]))
+        .filter((n) => n.startsWith(text) && n !== text)
+        .sort();
 
       if (matches.length === 0) {
         setCharAutoState(s => s.visible ? { ...s, visible: false } : s);

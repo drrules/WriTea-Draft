@@ -115,6 +115,22 @@ const CharacterProfiles: React.FC<CharacterProfilesProps> = ({ editor, style }) 
   const [addRelFor, setAddRelFor] = useState<string | null>(null); // character name to add rel for
   const [expandedChar, setExpandedChar] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [newCharName, setNewCharName] = useState('');
+
+  /** Add a character by hand, so a cast can be set up before anyone speaks. */
+  const handleAddCharacter = () => {
+    const name = (characterKey(newCharName) || newCharName).trim().toUpperCase();
+    if (!name) return;
+    if (!characterProfiles.some((p) => p.name === name)) {
+      const colorIdx = characterProfiles.length % DEFAULT_HIGHLIGHT_COLORS.length;
+      upsertCharacterProfile(name, { color: DEFAULT_HIGHLIGHT_COLORS[colorIdx] });
+      useEditorStore.getState().setSaveStatus('unsaved');
+    }
+    setNewCharName('');
+    setSearchQuery('');
+    setSelectedCharacter(name);
+    setExpandedChar(name);
+  };
   const [showReferred, setShowReferred] = useState(false);
   const sortBy = useEditorStore((s) => s.characterSortBy);
   const setSortBy = useEditorStore((s) => s.setCharacterSortBy);
@@ -226,12 +242,10 @@ const CharacterProfiles: React.FC<CharacterProfilesProps> = ({ editor, style }) 
       });
     }
 
-    // Step 3: remove orphaned profiles (characters no longer in script)
-    for (const prof of characterProfiles) {
-      if (!names.has(prof.name)) {
-        deleteCharacterProfile(prof.name);
-      }
-    }
+    // Step 3: characters that are not in the script right now are never
+    // removed on their own. They may be preloaded, cut for the moment, or
+    // coming back, so the writer is asked at the end and Keep is the default.
+    const orphans = characterProfiles.filter((p) => !names.has(p.name)).map((p) => p.name);
 
     // Step 4: apply to profiles
     let colorIdx = characterProfiles.length;
@@ -257,6 +271,26 @@ const CharacterProfiles: React.FC<CharacterProfilesProps> = ({ editor, style }) 
       if (Object.keys(updates).length > 0) {
         upsertCharacterProfile(charName, updates);
       }
+    }
+
+    if (orphans.length > 0) {
+      void (async () => {
+        const shown = orphans.length > 6
+          ? `${orphans.slice(0, 6).join(', ')} and ${orphans.length - 6} more`
+          : orphans.join(', ');
+        const message = `These characters are not in the script right now: ${shown}. Remove them from the Characters panel? Their notes will be lost.`;
+        let remove = false;
+        try {
+          const { ask } = await import('@tauri-apps/plugin-dialog');
+          remove = await ask(message, { title: 'Remove characters?', kind: 'warning', okLabel: 'Remove', cancelLabel: 'Keep' });
+        } catch {
+          remove = window.confirm(message);
+        }
+        if (remove) {
+          for (const name of orphans) deleteCharacterProfile(name);
+          useEditorStore.getState().setSaveStatus('unsaved');
+        }
+      })();
     }
   }, [editor, characterProfiles, upsertCharacterProfile, deleteCharacterProfile]);
 
@@ -924,6 +958,25 @@ const CharacterProfiles: React.FC<CharacterProfilesProps> = ({ editor, style }) 
           Build from Script
         </button>
       </div>
+      {/* Add a character by hand: a cast can be set up before anyone speaks */}
+      <div className="char-profiles-toolbar">
+        <input
+          type="text"
+          placeholder="Add a character..."
+          value={newCharName}
+          onChange={(e) => setNewCharName(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddCharacter(); } }}
+          className="char-profiles-search-input"
+        />
+        <button
+          className="char-profiles-build-btn"
+          onClick={handleAddCharacter}
+          disabled={!newCharName.trim()}
+          title="Add this character now; the name will autocomplete when you type it in the script"
+        >
+          Add
+        </button>
+      </div>
       {/* Sort bar */}
       <div className="char-profiles-sort">
         <span className="char-sort-label">Sort</span>
@@ -946,7 +999,7 @@ const CharacterProfiles: React.FC<CharacterProfilesProps> = ({ editor, style }) 
           <div className="char-profiles-empty">
             {searchQuery
               ? 'No characters match your search.'
-              : 'No characters detected. Add character elements to your screenplay.'}
+              : 'No characters yet. Add one above, or type a character into your script.'}
           </div>
         ) : (
           allCharacters.map((name) => {
