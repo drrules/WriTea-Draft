@@ -27,8 +27,6 @@ import { relativeTime } from '../utils/relativeTime';
 interface Props {
   /** Gates the check until the editor can actually receive a restore. */
   editorReady: boolean;
-  currentProjectId: string | null;
-  currentScriptId: string | null;
   /** Applies the snapshot to the editor. Owned by ScreenplayEditor. */
   onRestore: (snapshot: RecoverySnapshot) => void;
   /**
@@ -45,8 +43,6 @@ interface Props {
 
 const RecoveryPromptDialog: React.FC<Props> = ({
   editorReady,
-  currentProjectId,
-  currentScriptId,
   onRestore,
   onOpenChange,
   onChecked,
@@ -129,7 +125,7 @@ const RecoveryPromptDialog: React.FC<Props> = ({
 
   if (!snapshot) return null;
 
-  const isSameDocument = snapshotMatchesDocument(snapshot, currentProjectId, currentScriptId);
+  const isSameDocument = snapshotMatchesDocument(snapshot, null, null);
 
   const discard = () => {
     clearRecoverySnapshot();

@@ -4737,8 +4737,6 @@ const ScreenplayEditor: React.FC = () => {
       {!isHistoryMode && !collabMode && (
         <RecoveryPromptDialog
           editorReady={!!editor}
-          currentProjectId={currentProject?.id ?? null}
-          currentScriptId={currentScriptId}
           onRestore={handleRecoveryRestore}
           onOpenChange={handleRecoveryOpenChange}
           onChecked={handleRecoveryChecked}

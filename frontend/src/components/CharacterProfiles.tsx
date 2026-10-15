@@ -3,7 +3,6 @@ import type { Editor } from '@tiptap/react';
 import DOMPurify from 'dompurify';
 import { useDelayedUnmount, useSwipeDismiss } from '../hooks/useTouch';
 import { useEditorStore, type CharacterProfile, type CharacterRelationship } from '../stores/editorStore';
-import { useProjectStore } from '../stores/projectStore';
 import { characterKey, singleLine } from '../utils/nodeText';
 import { useAssetStore } from '../stores/assetStore';
 import { putScratchAsset } from '../services/scratchAssets';
@@ -108,7 +107,6 @@ const CharacterProfiles: React.FC<CharacterProfilesProps> = ({ editor, style }) 
     setSelectedCharacter,
   } = useEditorStore();
 
-  const currentScriptId = useProjectStore((s) => s.currentScriptId);
   const { assets } = useAssetStore();
 
   const [activeTab, setActiveTab] = useState<'profiles' | 'map'>('profiles');
@@ -927,8 +925,6 @@ const CharacterProfiles: React.FC<CharacterProfilesProps> = ({ editor, style }) 
       {/* Relationship Map tab */}
       {activeTab === 'map' && (
         <RelationshipMap
-          key={currentScriptId || 'no-script'}
-          scriptId={currentScriptId || undefined}
           onSelectCharacter={(name) => {
             setActiveTab('profiles');
             setSelectedCharacter(name);
