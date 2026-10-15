@@ -1,3 +1,4 @@
+import { writeaOnlyContent } from '../utils/writeaOnly';
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { Editor } from '@tiptap/react';
@@ -388,6 +389,55 @@ const MenuBar: React.FC<MenuBarProps> = ({
   );
 
   /**
+   * An .fdx cannot hold everything a WriTea Draft script can (pictures, for
+   * one), and saving over it would quietly drop them. So the original is left
+   * alone and the script carries on as a .writea beside it. The writer picks
+   * the destination in the normal Save dialog, which also asks before
+   * replacing a file that is already there.
+   */
+  const saveAsWriteaBeside = useCallback(async (origin: DocumentOrigin, extras: string[]): Promise<boolean> => {
+    const { ask, save } = await import('@tauri-apps/plugin-dialog');
+    const lf = await import('../services/linkedFiles');
+    const s = useEditorStore.getState();
+    const message = `This script contains information that isn't included in FDX (${extras.join(', ')}).\n\nWe're using our own extension, .writea, saved beside the original, so your .fdx won't be changed. If you want a file that's compatible with Final Draft, export it from File > Export and those parts will be stripped out.`;
+    let go = false;
+    try {
+      go = await ask(message, { title: 'Save as a WriTea Draft file', kind: 'info', okLabel: 'Save as .writea', cancelLabel: 'Cancel' });
+    } catch {
+      go = window.confirm(message);
+    }
+    if (!go) return false;
+
+    const stem = lf.basenameOf(origin.bookmark).replace(/\.[^.]+$/, '');
+    const picked = await save({
+      title: 'Save as .writea',
+      defaultPath: lf.joinPath(lf.dirnameOf(origin.bookmark), `${stem}.writea`),
+      filters: [{ name: 'WriTea Draft', extensions: ['writea'] }],
+    });
+    if (!picked) return false;
+    const path = extensionOfPath(picked).toLowerCase() === 'writea' ? picked : `${picked}.writea`;
+    const name = lf.basenameOf(path);
+
+    s.setSaveStatus('saving');
+    try {
+      await saveDocumentInPlace(path, await serializeForOrigin('writea'));
+      s.setDocumentOrigin({ bookmark: path, name, format: 'writea' });
+      s.setSaveStatus('saved');
+      const payload = buildSaveContent();
+      if (payload) onDocumentSaved?.(JSON.stringify(payload));
+      clearRecoverySnapshot();
+      showToast(`Saved as ${name}. Your original ${lf.basenameOf(origin.bookmark)} is unchanged.`, 'success');
+      return true;
+    } catch (err) {
+      console.error('Save as .writea failed:', err);
+      const msg = err instanceof Error ? err.message : String(err);
+      s.setSaveStatus('error', msg);
+      showToast(`Could not save ${name}: ${msg}`, 'error');
+      return false;
+    }
+  }, [serializeForOrigin, buildSaveContent, onDocumentSaved]);
+
+  /**
    * Write the open document back over the file it was opened from.
    *
    * Shared by Save and the file auto-save. Returns whether the file now holds
@@ -401,6 +451,18 @@ const MenuBar: React.FC<MenuBarProps> = ({
     // means the writer kept typing while the file was written — and those
     // edits are not in it. Edits made during 'saving' do not mark the document
     // unsaved on their own, so this is the only thing that would notice.
+    // A Final Draft file cannot hold everything WriTea Draft can. Saving over
+    // it would drop the rest without a word, so the original is left alone and
+    // the script continues as a .writea beside it. Desktop only: a phone's
+    // bookmark is opaque, so there is no sibling file to name there.
+    if (origin.format === 'fdx' && isDesktopTauri()) {
+      const extras = writeaOnlyContent(buildSaveContent());
+      if (extras.length > 0) {
+        // Never asked mid-typing; the writer decides when they press Save.
+        if (auto) return false;
+        return saveAsWriteaBeside(origin, extras);
+      }
+    }
     const docBefore = editor?.state.doc;
     setSaveStatus('saving');
     try {
@@ -431,7 +493,7 @@ const MenuBar: React.FC<MenuBarProps> = ({
       }
       return false;
     }
-  }, [editor, serializeForOrigin, buildSaveContent, onDocumentSaved]);
+  }, [editor, serializeForOrigin, buildSaveContent, onDocumentSaved, saveAsWriteaBeside]);
 
   // ── Save current editor content to backend ──
   const saveToFileAsRef = useRef<() => Promise<boolean>>(async () => false);
