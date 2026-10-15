@@ -25,6 +25,7 @@ import { useEditorStore, DEFAULT_TAG_CATEGORIES } from '../stores/editorStore';
 
 /** Every extension File ▸ Import, drag-and-drop and the OS can hand us. */
 export const SCREENPLAY_IMPORT_EXTENSIONS = [
+  'writea',
   'fountain',
   'fdx',
   'fadein',
@@ -57,6 +58,7 @@ export function isImportableExtension(ext: string | null | undefined): boolean {
 }
 
 const FORMAT_LABELS: Record<string, string> = {
+  writea: 'WriTea Draft (.writea)',
   fdx: 'Final Draft (.fdx)',
   fountain: 'Fountain (.fountain)',
   fadein: 'Fade In (.fadein)',
