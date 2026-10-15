@@ -25,6 +25,17 @@ function commit(next: Asset[]): void {
   useEditorStore.getState().setSaveStatus('unsaved');
 }
 
+/** Ask before an asset leaves the list, with the native dialog where there is one. */
+async function confirmRemove(name: string): Promise<boolean> {
+  const message = `Remove "${name}" from this script's assets?\n\nYou can undo this until you close the Asset Manager.`;
+  try {
+    const { ask } = await import('@tauri-apps/plugin-dialog');
+    return await ask(message, { title: 'Remove asset', kind: 'warning', okLabel: 'Remove', cancelLabel: 'Cancel' });
+  } catch {
+    return window.confirm(message);
+  }
+}
+
 /**
  * The assets of the open script: pictures, audio, PDFs and so on. The list is
  * saved inside the script, and the files themselves travel in its .writea.
@@ -39,6 +50,7 @@ const AssetManager: React.FC = () => {
   const [previewAsset, setPreviewAsset] = useState<Asset | null>(null);
   const [editingTagsId, setEditingTagsId] = useState<string | null>(null);
   const [editTagsValue, setEditTagsValue] = useState('');
+  const [lastRemoved, setLastRemoved] = useState<{ asset: Asset; index: number } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const addFiles = useCallback(async (files: File[]) => {
@@ -98,14 +110,35 @@ const AssetManager: React.FC = () => {
     return () => window.removeEventListener('tauri-asset-drop', handler);
   }, [assetManagerOpen, addFiles]);
 
+  // The undo offer lasts only while the Asset Manager stays open.
+  useEffect(() => {
+    if (!assetManagerOpen) setLastRemoved(null);
+  }, [assetManagerOpen]);
+
   const handleUpload = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
     await addFiles(Array.from(files));
   };
 
-  const handleRemove = (assetId: string) => {
+  const handleRemove = async (assetId: string) => {
+    const current = useAssetStore.getState().assets;
+    const index = current.findIndex((a) => a.id === assetId);
+    if (index === -1) return;
+    const asset = current[index];
+    if (!(await confirmRemove(asset.original_name))) return;
     commit(useAssetStore.getState().assets.filter((a) => a.id !== assetId));
-    showToast('Removed from this script', 'success');
+    setLastRemoved({ asset, index });
+  };
+
+  const handleUndoRemove = () => {
+    if (!lastRemoved) return;
+    const current = useAssetStore.getState().assets;
+    if (!current.some((a) => a.id === lastRemoved.asset.id)) {
+      const next = [...current];
+      next.splice(Math.min(lastRemoved.index, next.length), 0, lastRemoved.asset);
+      commit(next);
+    }
+    setLastRemoved(null);
   };
 
   const handleDownload = async (asset: Asset) => {
@@ -316,6 +349,13 @@ const AssetManager: React.FC = () => {
               </table>
             )}
           </div>
+
+          {lastRemoved && (
+            <div className="asset-list-empty" role="status">
+              Removed "{lastRemoved.asset.original_name}".{' '}
+              <button className="asset-tags-save-btn" onClick={handleUndoRemove}>Undo</button>
+            </div>
+          )}
 
           {/* Preview overlay */}
           {previewAsset && (
