@@ -28,6 +28,7 @@
         { "path": "$RESOURCE/**" }
       ]
     },
+    "core:window:allow-close",
     "dialog:default",
     "dialog:allow-confirm",
     "dialog:allow-ask",

@@ -104,6 +104,7 @@ import {
   FaFile,
   FaPlus,
   FaTimes,
+  FaSignOutAlt,
   FaPencilAlt,
   FaPalette,
   FaEye,
@@ -2480,6 +2481,21 @@ const MenuBar: React.FC<MenuBarProps> = ({
         // where anyone looks for it — the writer who wants the title page kept
         // out of a PDF is the writer already looking at their title page.
         { icon: <FaPrint />, label: 'Print…', shortcut: `${mod}P`, action: () => { void handlePrint(); } },
+        { separator: true, label: '' },
+        { icon: <FaCog />, label: 'WriTea Settings…', action: goToSettings },
+        ...(isDesktopTauri() ? [{
+          icon: <FaSignOutAlt />,
+          label: 'Exit',
+          // Closing the window runs the same unsaved-changes check as the title-bar X.
+          action: async () => {
+            try {
+              const { getCurrentWindow } = await import('@tauri-apps/api/window');
+              await getCurrentWindow().close();
+            } catch (err) {
+              showToast(`Could not exit: ${err instanceof Error ? err.message : String(err)}`, 'error');
+            }
+          },
+        }] : []),
       ],
     },
     {
@@ -2726,30 +2742,6 @@ const MenuBar: React.FC<MenuBarProps> = ({
       label: 'View',
       items: [
         {
-          icon: <FaColumns />, label: 'Panels',
-          children: [
-            { icon: <FaCompass />, label: navigatorOpen ? '\u2713 Navigator' : 'Navigator', action: toggleNavigator },
-            { icon: <FaTh />, label: indexCardsOpen ? '\u2713 Index Cards' : 'Index Cards', action: toggleIndexCards },
-            { icon: <FaStream />, label: beatBoardOpen ? '\u2713 Beat Board' : 'Beat Board', action: toggleBeatBoard },
-            { icon: <FaStickyNote />, label: scriptNotesOpen ? '\u2713 Notes Panel' : 'Notes Panel', action: () => {
-              const hasSelection = editor && !editor.state.selection.empty;
-              useEditorStore.getState().setNotesActiveTab(hasSelection ? 'script' : 'general');
-              toggleScriptNotes();
-            } },
-            { icon: <FaUsers />, label: characterProfilesOpen ? '\u2713 Characters' : 'Characters', action: toggleCharacterProfiles },
-            { icon: <FaTags />, label: tagsPanelOpen ? '\u2713 Tags' : 'Tags', action: toggleTagsPanel },
-            { icon: <FaCompass />, label: locationDatabaseOpen ? '\u2713 Locations' : 'Locations', action: toggleLocationDatabase },
-          ],
-        },
-        {
-          icon: <FaHighlighter />, label: 'Highlights',
-          children: [
-            { icon: <FaHighlighter />, label: notesVisible ? '\u2713 Note Highlights' : 'Note Highlights', action: () => setNotesVisible(!notesVisible) },
-            { icon: <FaHighlighter />, label: tagsVisible ? '\u2713 Tag Highlights' : 'Tag Highlights', action: () => setTagsVisible(!tagsVisible) },
-          ],
-        },
-        { separator: true, label: '' },
-        {
           icon: <FaAdjust />, label: 'Theme',
           children: [
             { icon: <FaSun />, label: appearance === 'light' ? '\u2713 Light' : 'Light', action: () => setAppearance('light') },
@@ -2789,8 +2781,28 @@ const MenuBar: React.FC<MenuBarProps> = ({
       ],
     },
     {
-      label: 'Tools',
+      label: 'Script Tools',
       items: [
+        { icon: <FaCompass />, label: navigatorOpen ? '\u2713 Navigator' : 'Navigator', action: toggleNavigator },
+        { icon: <FaTh />, label: indexCardsOpen ? '\u2713 Index Cards' : 'Index Cards', action: toggleIndexCards },
+        { icon: <FaStream />, label: beatBoardOpen ? '\u2713 Beat Board' : 'Beat Board', action: toggleBeatBoard },
+        { icon: <FaUsers />, label: characterProfilesOpen ? '\u2713 Characters' : 'Characters', action: toggleCharacterProfiles },
+        { icon: <FaCompass />, label: locationDatabaseOpen ? '\u2713 Locations' : 'Locations', action: toggleLocationDatabase },
+        { icon: <FaStickyNote />, label: scriptNotesOpen ? '\u2713 Script Notes' : 'Script Notes', action: () => {
+          const hasSelection = editor && !editor.state.selection.empty;
+          useEditorStore.getState().setNotesActiveTab(hasSelection ? 'script' : 'general');
+          toggleScriptNotes();
+        } },
+        { icon: <FaTags />, label: tagsPanelOpen ? '\u2713 Tags' : 'Tags', action: toggleTagsPanel },
+        { separator: true, label: '' },
+        {
+          icon: <FaHighlighter />, label: 'Highlights',
+          children: [
+            { icon: <FaHighlighter />, label: notesVisible ? '\u2713 Note Highlights' : 'Note Highlights', action: () => setNotesVisible(!notesVisible) },
+            { icon: <FaHighlighter />, label: tagsVisible ? '\u2713 Tag Highlights' : 'Tag Highlights', action: () => setTagsVisible(!tagsVisible) },
+          ],
+        },
+        { separator: true, label: '' },
         { icon: <FaBoxes />, label: 'Asset Manager', action: () => useAssetStore.getState().toggleAssetManager() },
         { separator: true, label: '' },
         {
@@ -2823,8 +2835,6 @@ const MenuBar: React.FC<MenuBarProps> = ({
             } },
           ],
         },
-        { separator: true, label: '' },
-        { icon: <FaCog />, label: 'WriTea Settings…', action: goToSettings },
         { separator: true, label: '' },
         {
           icon: <FaFilm />, label: 'Production',
