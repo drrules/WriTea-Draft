@@ -70,8 +70,14 @@
         "files": {
           "/usr/share/applications/writeadraft.desktop": "linux/writeadraft.desktop",
           "/usr/share/mime/packages/writeadraft.xml": "linux/writeadraft-mime.xml",
-          "/usr/share/icons/hicolor/scalable/mimetypes/application-x-writea.svg": "linux/icons/application-x-writea.svg",
-          "/usr/share/icons/hicolor/scalable/mimetypes/application-x-fdx.svg": "linux/icons/application-x-fdx.svg"
+          "/usr/share/icons/hicolor/48x48/mimetypes/application-x-writea.png": "linux/icons/png/application-x-writea-48.png",
+          "/usr/share/icons/hicolor/64x64/mimetypes/application-x-writea.png": "linux/icons/png/application-x-writea-64.png",
+          "/usr/share/icons/hicolor/128x128/mimetypes/application-x-writea.png": "linux/icons/png/application-x-writea-128.png",
+          "/usr/share/icons/hicolor/256x256/mimetypes/application-x-writea.png": "linux/icons/png/application-x-writea-256.png",
+          "/usr/share/icons/hicolor/48x48/mimetypes/application-x-fdx.png": "linux/icons/png/application-x-fdx-48.png",
+          "/usr/share/icons/hicolor/64x64/mimetypes/application-x-fdx.png": "linux/icons/png/application-x-fdx-64.png",
+          "/usr/share/icons/hicolor/128x128/mimetypes/application-x-fdx.png": "linux/icons/png/application-x-fdx-128.png",
+          "/usr/share/icons/hicolor/256x256/mimetypes/application-x-fdx.png": "linux/icons/png/application-x-fdx-256.png"
         }
       }
     },
