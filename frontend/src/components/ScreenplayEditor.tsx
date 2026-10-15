@@ -4720,7 +4720,7 @@ const ScreenplayEditor: React.FC = () => {
         <GrammarRulesPanel onClose={() => setGrammarRulesPanelOpen(false)} />
       )}
       {!isHistoryMode && <VersionHistory />}
-      {!isHistoryMode && currentProject && <AssetManager projectId={currentProject.id} />}
+      {!isHistoryMode && <AssetManager />}
       {!isHistoryMode && openFileOpen && (
         <OpenFile
           onOpen={handleOpenFile}

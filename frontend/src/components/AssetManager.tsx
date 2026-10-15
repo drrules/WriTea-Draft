@@ -1,18 +1,36 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAssetStore } from '../stores/assetStore';
 import type { Asset } from '../stores/assetStore';
+import { useEditorStore } from '../stores/editorStore';
 import AssetViewer from './AssetViewer';
-import { api } from '../services/api';
+import { putScratchAsset, getScratchBytes } from '../services/scratchAssets';
+import { saveFile } from '../utils/fileOps';
 import { showToast } from './Toast';
 import Select from './Select';
 
-interface AssetManagerProps {
-  projectId: string;
-  embedded?: boolean;
+const MIME_BY_EXTENSION: Record<string, string> = {
+  png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif',
+  webp: 'image/webp', svg: 'image/svg+xml', pdf: 'application/pdf',
+  mp3: 'audio/mpeg', wav: 'audio/wav', mp4: 'video/mp4', webm: 'video/webm',
+  txt: 'text/plain',
+};
+
+function parseTags(raw: string): string[] {
+  return raw.trim() ? raw.trim().split(',').map((t) => t.trim()).filter(Boolean) : [];
 }
 
-const AssetManager: React.FC<AssetManagerProps> = ({ projectId, embedded = false }) => {
-  const { assets, setAssets, assetManagerOpen, setAssetManagerOpen } = useAssetStore();
+/** Every change to the list leaves the script with something new to save. */
+function commit(next: Asset[]): void {
+  useAssetStore.getState().setAssets(next);
+  useEditorStore.getState().setSaveStatus('unsaved');
+}
+
+/**
+ * The assets of the open script: pictures, audio, PDFs and so on. The list is
+ * saved inside the script, and the files themselves travel in its .writea.
+ */
+const AssetManager: React.FC = () => {
+  const { assets, assetManagerOpen, setAssetManagerOpen } = useAssetStore();
   const [filterText, setFilterText] = useState('');
   const [filterTag, setFilterTag] = useState('');
   const [tagInput, setTagInput] = useState('');
@@ -21,127 +39,93 @@ const AssetManager: React.FC<AssetManagerProps> = ({ projectId, embedded = false
   const [previewAsset, setPreviewAsset] = useState<Asset | null>(null);
   const [editingTagsId, setEditingTagsId] = useState<string | null>(null);
   const [editTagsValue, setEditTagsValue] = useState('');
-  const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [savingTagsId, setSavingTagsId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const fetchAssets = useCallback(async () => {
-    try {
-      const list = await api.listAssets(projectId);
-      setAssets(list);
-    } catch {
-      // silently fail
+  const addFiles = useCallback(async (files: File[]) => {
+    if (files.length === 0) return;
+    setUploading(true);
+    const tags = parseTags(tagInput);
+    const added: Asset[] = [];
+    for (const file of files) {
+      const meta = await putScratchAsset(file, file.name);
+      if (!meta) {
+        showToast(`Could not add "${file.name}"`, 'error');
+        continue;
+      }
+      added.push({
+        id: meta.id,
+        filename: meta.filename,
+        original_name: file.name,
+        mime_type: meta.mimeType,
+        size_bytes: meta.sizeBytes,
+        tags,
+        created_at: new Date().toISOString(),
+      });
     }
-  }, [projectId, setAssets]);
-
-  useEffect(() => {
-    if (embedded || assetManagerOpen) {
-      fetchAssets();
+    if (added.length > 0) commit([...useAssetStore.getState().assets, ...added]);
+    setTagInput('');
+    setUploading(false);
+    if (added.length > 0) {
+      showToast(`Added ${added.length} file${added.length !== 1 ? 's' : ''}`, 'success');
     }
-  }, [embedded, assetManagerOpen, fetchAssets]);
+  }, [tagInput]);
 
   // Handle Tauri native drag-and-drop forwarded from ScreenplayEditor
   useEffect(() => {
-    if (!embedded && !assetManagerOpen) return;
+    if (!assetManagerOpen) return;
     const handler = async (e: Event) => {
       const paths = (e as CustomEvent).detail?.paths as string[] | undefined;
       if (!paths || paths.length === 0) return;
       try {
         const { readFile } = await import('@tauri-apps/plugin-fs');
-        setUploading(true);
-        let failed = 0;
+        const files: File[] = [];
         for (const filePath of paths) {
           const filename = filePath.replace(/^.*[\\/]/, '') || 'file';
           try {
             const data = await readFile(filePath);
             const ext = filename.split('.').pop()?.toLowerCase() || '';
-            const mimeMap: Record<string, string> = {
-              png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif',
-              webp: 'image/webp', svg: 'image/svg+xml', pdf: 'application/pdf',
-              mp3: 'audio/mpeg', wav: 'audio/wav', mp4: 'video/mp4', webm: 'video/webm',
-              txt: 'text/plain',
-            };
-            const mime = mimeMap[ext] || 'application/octet-stream';
-            const file = new File([data], filename, { type: mime });
-            const tags = tagInput.trim() ? tagInput.trim().split(',').map((t) => t.trim()).filter(Boolean) : [];
-            await api.uploadAsset(projectId, file, tags);
+            files.push(new File([data], filename, { type: MIME_BY_EXTENSION[ext] || 'application/octet-stream' }));
           } catch {
-            failed++;
-            showToast(`Failed to upload "${filename}"`, 'error');
+            showToast(`Could not read "${filename}"`, 'error');
           }
         }
-        setTagInput('');
-        await fetchAssets();
-        setUploading(false);
-        const succeeded = paths.length - failed;
-        if (succeeded > 0) {
-          showToast(`Uploaded ${succeeded} file${succeeded !== 1 ? 's' : ''} successfully`, 'success');
-        }
+        await addFiles(files);
       } catch {
         setUploading(false);
       }
     };
     window.addEventListener('tauri-asset-drop', handler);
     return () => window.removeEventListener('tauri-asset-drop', handler);
-  }, [embedded, assetManagerOpen, projectId, tagInput, fetchAssets]);
+  }, [assetManagerOpen, addFiles]);
 
   const handleUpload = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
-    setUploading(true);
-    let failed = 0;
-    const fileArray = Array.from(files);
-    for (const file of fileArray) {
-      const tags = tagInput.trim() ? tagInput.trim().split(',').map((t) => t.trim()).filter(Boolean) : [];
-      try {
-        await api.uploadAsset(projectId, file, tags);
-      } catch (err) {
-        failed++;
-        showToast(`Failed to upload "${file.name}": ${err instanceof Error ? err.message : 'unknown error'}`, 'error');
-      }
-    }
-    setTagInput('');
-    await fetchAssets();
-    setUploading(false);
-    const succeeded = fileArray.length - failed;
-    if (succeeded > 0) {
-      showToast(`Uploaded ${succeeded} file${succeeded !== 1 ? 's' : ''} successfully`, 'success');
-    }
+    await addFiles(Array.from(files));
   };
 
-  const handleDelete = async (assetId: string) => {
-    setDeletingId(assetId);
+  const handleRemove = (assetId: string) => {
+    commit(useAssetStore.getState().assets.filter((a) => a.id !== assetId));
+    showToast('Removed from this script', 'success');
+  };
+
+  const handleDownload = async (asset: Asset) => {
+    const bytes = await getScratchBytes(asset.id);
+    if (!bytes) {
+      showToast(`"${asset.original_name}" is missing from this computer.`, 'error');
+      return;
+    }
     try {
-      await api.deleteAsset(projectId, assetId);
-      await fetchAssets();
-      showToast('Asset deleted', 'success');
+      await saveFile(bytes, asset.original_name);
     } catch (err) {
-      showToast(`Failed to delete asset: ${err instanceof Error ? err.message : 'unknown error'}`, 'error');
-    } finally {
-      setDeletingId(null);
+      showToast(`Could not save the file: ${err instanceof Error ? err.message : 'unknown error'}`, 'error');
     }
   };
 
-  const handleDownload = (asset: Asset) => {
-    const url = api.getAssetUrl(projectId, asset.id, asset.filename);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = asset.original_name;
-    a.click();
-  };
-
-  const handleSaveTags = async (assetId: string) => {
+  const handleSaveTags = (assetId: string) => {
     const tags = editTagsValue.split(',').map((t) => t.trim()).filter(Boolean);
-    setSavingTagsId(assetId);
-    try {
-      await api.updateAssetTags(projectId, assetId, tags);
-      await fetchAssets();
-      showToast('Tags updated', 'success');
-    } catch (err) {
-      showToast(`Failed to update tags: ${err instanceof Error ? err.message : 'unknown error'}`, 'error');
-    } finally {
-      setSavingTagsId(null);
-      setEditingTagsId(null);
-    }
+    commit(useAssetStore.getState().assets.map((a) => (a.id === assetId ? { ...a, tags } : a)));
+    setEditingTagsId(null);
+    showToast('Tags updated', 'success');
   };
 
   const handleDrop = (e: React.DragEvent) => {
@@ -175,175 +159,6 @@ const AssetManager: React.FC<AssetManagerProps> = ({ projectId, embedded = false
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
-  const content = (
-    <div className="asset-manager-content">
-      {/* Upload section */}
-      <div
-        className={`asset-upload-zone ${dragOver ? 'drag-over' : ''}`}
-        onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-        onDragLeave={() => setDragOver(false)}
-        onDrop={handleDrop}
-        onClick={() => fileInputRef.current?.click()}
-      >
-        <input
-          ref={fileInputRef}
-          type="file"
-          multiple
-          style={{ display: 'none' }}
-          onChange={(e) => handleUpload(e.target.files)}
-        />
-        <div className="asset-upload-icon">{uploading ? '\u23f3' : '\u2b06'}</div>
-        <div className="asset-upload-text">
-          {uploading ? 'Uploading...' : 'Drop files here or click to upload'}
-        </div>
-      </div>
-
-      <div className="asset-tag-input-row">
-        <label>Tags for upload:</label>
-        <input
-          type="text"
-          placeholder="tag1, tag2, ..."
-          value={tagInput}
-          onChange={(e) => setTagInput(e.target.value)}
-          className="asset-tag-input"
-        />
-      </div>
-
-      {/* Filter bar */}
-      <div className="asset-filter-bar">
-        <input
-          type="text"
-          placeholder="Search by name..."
-          value={filterText}
-          onChange={(e) => setFilterText(e.target.value)}
-          className="asset-filter-input"
-        />
-        <Select
-          value={filterTag}
-          onChange={(e) => setFilterTag(e.target.value)}
-          className="asset-filter-select"
-        >
-          <option value="">All Tags</option>
-          {allTags.map((tag) => (
-            <option key={tag} value={tag}>{tag}</option>
-          ))}
-        </Select>
-      </div>
-
-      {/* Asset list */}
-      <div className="asset-list">
-        {filtered.length === 0 ? (
-          <div className="asset-list-empty">
-            {assets.length === 0 ? 'No assets yet. Upload files to get started.' : 'No assets match your filters.'}
-          </div>
-        ) : (
-          <table className="asset-table">
-            <thead>
-              <tr>
-                <th>Type</th>
-                <th>Name</th>
-                <th>Size</th>
-                <th>Tags</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((asset) => (
-                <tr key={asset.id} className="asset-row">
-                  <td className="asset-cell-icon">
-                    <span title={asset.mime_type}>{getMimeIcon(asset.mime_type)}</span>
-                  </td>
-                  <td
-                    className="asset-cell-name"
-                    onClick={() => setPreviewAsset(asset)}
-                    title="Click to preview"
-                  >
-                    {asset.original_name}
-                  </td>
-                  <td className="asset-cell-size">{formatSize(asset.size_bytes)}</td>
-                  <td className="asset-cell-tags">
-                    {editingTagsId === asset.id ? (
-                      <div className="asset-tags-edit">
-                        <input
-                          type="text"
-                          value={editTagsValue}
-                          onChange={(e) => setEditTagsValue(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') handleSaveTags(asset.id);
-                            if (e.key === 'Escape' && !savingTagsId) setEditingTagsId(null);
-                          }}
-                          className="asset-tags-edit-input"
-                          disabled={savingTagsId === asset.id}
-                          autoFocus
-                        />
-                        <button
-                          className="asset-tags-save-btn"
-                          onClick={() => handleSaveTags(asset.id)}
-                          disabled={savingTagsId === asset.id}
-                        >
-                          {savingTagsId === asset.id ? 'Saving...' : 'Save'}
-                        </button>
-                      </div>
-                    ) : (
-                      <div
-                        className="asset-tags-display"
-                        onClick={() => {
-                          setEditingTagsId(asset.id);
-                          setEditTagsValue(asset.tags.join(', '));
-                        }}
-                        title="Click to edit tags"
-                      >
-                        {asset.tags.length > 0
-                          ? asset.tags.map((t) => (
-                              <span key={t} className="asset-tag-badge">#{t}</span>
-                            ))
-                          : <span className="asset-no-tags">no tags</span>
-                        }
-                      </div>
-                    )}
-                  </td>
-                  <td className="asset-cell-actions">
-                    <button
-                      className="asset-action-btn"
-                      onClick={() => handleDownload(asset)}
-                      title="Download"
-                      disabled={deletingId === asset.id}
-                    >
-                      &#x2B07;
-                    </button>
-                    <button
-                      className="asset-action-btn asset-action-delete"
-                      onClick={() => handleDelete(asset.id)}
-                      title="Delete"
-                      disabled={deletingId === asset.id}
-                    >
-                      {deletingId === asset.id ? '\u23f3' : '\u2715'}
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
-
-      {/* Preview overlay */}
-      {previewAsset && (
-        <AssetViewer
-          asset={previewAsset}
-          projectId={projectId}
-          onClose={() => setPreviewAsset(null)}
-        />
-      )}
-    </div>
-  );
-
-  // If embedded (inside ProjectView), render without dialog overlay
-  if (embedded) {
-    return <div className="asset-manager embedded">{content}</div>;
-  }
-
-  // Otherwise render as dialog
   if (!assetManagerOpen) return null;
 
   return (
@@ -355,7 +170,161 @@ const AssetManager: React.FC<AssetManagerProps> = ({ projectId, embedded = false
             &times;
           </button>
         </div>
-        {content}
+        <div className="asset-manager-content">
+          {/* Upload section */}
+          <div
+            className={`asset-upload-zone ${dragOver ? 'drag-over' : ''}`}
+            onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={handleDrop}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              style={{ display: 'none' }}
+              onChange={(e) => { handleUpload(e.target.files); e.target.value = ''; }}
+            />
+            <div className="asset-upload-icon">{uploading ? '\u23f3' : '\u2b06'}</div>
+            <div className="asset-upload-text">
+              {uploading ? 'Adding...' : 'Drop files here or click to add'}
+            </div>
+          </div>
+
+          <div className="asset-tag-input-row">
+            <label>Tags for new files:</label>
+            <input
+              type="text"
+              placeholder="tag1, tag2, ..."
+              value={tagInput}
+              onChange={(e) => setTagInput(e.target.value)}
+              className="asset-tag-input"
+            />
+          </div>
+
+          {/* Filter bar */}
+          <div className="asset-filter-bar">
+            <input
+              type="text"
+              placeholder="Search by name..."
+              value={filterText}
+              onChange={(e) => setFilterText(e.target.value)}
+              className="asset-filter-input"
+            />
+            <Select
+              value={filterTag}
+              onChange={(e) => setFilterTag(e.target.value)}
+              className="asset-filter-select"
+            >
+              <option value="">All Tags</option>
+              {allTags.map((tag) => (
+                <option key={tag} value={tag}>{tag}</option>
+              ))}
+            </Select>
+          </div>
+
+          {/* Asset list */}
+          <div className="asset-list">
+            {filtered.length === 0 ? (
+              <div className="asset-list-empty">
+                {assets.length === 0 ? 'No assets yet. Add files to get started.' : 'No assets match your filters.'}
+              </div>
+            ) : (
+              <table className="asset-table">
+                <thead>
+                  <tr>
+                    <th>Type</th>
+                    <th>Name</th>
+                    <th>Size</th>
+                    <th>Tags</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map((asset) => (
+                    <tr key={asset.id} className="asset-row">
+                      <td className="asset-cell-icon">
+                        <span title={asset.mime_type}>{getMimeIcon(asset.mime_type)}</span>
+                      </td>
+                      <td
+                        className="asset-cell-name"
+                        onClick={() => setPreviewAsset(asset)}
+                        title="Click to preview"
+                      >
+                        {asset.original_name}
+                      </td>
+                      <td className="asset-cell-size">{formatSize(asset.size_bytes)}</td>
+                      <td className="asset-cell-tags">
+                        {editingTagsId === asset.id ? (
+                          <div className="asset-tags-edit">
+                            <input
+                              type="text"
+                              value={editTagsValue}
+                              onChange={(e) => setEditTagsValue(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') handleSaveTags(asset.id);
+                                if (e.key === 'Escape') setEditingTagsId(null);
+                              }}
+                              className="asset-tags-edit-input"
+                              autoFocus
+                            />
+                            <button
+                              className="asset-tags-save-btn"
+                              onClick={() => handleSaveTags(asset.id)}
+                            >
+                              Save
+                            </button>
+                          </div>
+                        ) : (
+                          <div
+                            className="asset-tags-display"
+                            onClick={() => {
+                              setEditingTagsId(asset.id);
+                              setEditTagsValue(asset.tags.join(', '));
+                            }}
+                            title="Click to edit tags"
+                          >
+                            {asset.tags.length > 0
+                              ? asset.tags.map((t) => (
+                                  <span key={t} className="asset-tag-badge">#{t}</span>
+                                ))
+                              : <span className="asset-no-tags">no tags</span>
+                            }
+                          </div>
+                        )}
+                      </td>
+                      <td className="asset-cell-actions">
+                        <button
+                          className="asset-action-btn"
+                          onClick={() => handleDownload(asset)}
+                          title="Save a copy"
+                        >
+                          &#x2B07;
+                        </button>
+                        <button
+                          className="asset-action-btn asset-action-delete"
+                          onClick={() => handleRemove(asset.id)}
+                          title="Remove from this script"
+                        >
+                          {'\u2715'}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+
+          {/* Preview overlay */}
+          {previewAsset && (
+            <AssetViewer
+              asset={previewAsset}
+              onClose={() => setPreviewAsset(null)}
+            />
+          )}
+        </div>
       </div>
     </div>
   );

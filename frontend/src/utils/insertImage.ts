@@ -2,6 +2,7 @@ import type { Editor } from '@tiptap/react';
 import { NodeSelection, TextSelection } from '@tiptap/pm/state';
 import { api } from '../services/api';
 import { useProjectStore } from '../stores/projectStore';
+import { useAssetStore } from '../stores/assetStore';
 import { putScratchAsset } from '../services/scratchAssets';
 import { showToast } from '../components/Toast';
 import { isAvCellPos, AV_IMAGE_SOURCE_FIELDS } from '../editor/extensions/AvBlock';
@@ -121,6 +122,7 @@ export async function buildImageAttrs(
 
   const scratch = await putScratchAsset(file, file.name);
   if (scratch) {
+    registerScriptAsset(scratch, file.name, tags);
     return { ...base, scratchId: scratch.id, filename: file.name || scratch.filename };
   }
 
@@ -164,4 +166,23 @@ export function imageFilesFrom(dt: DataTransfer | null | undefined): File[] {
     }
   }
   return files;
+}
+
+/** List a freshly stored picture in the open script's Asset Manager. */
+function registerScriptAsset(
+  meta: { id: string; filename: string; mimeType: string; sizeBytes: number },
+  originalName: string,
+  tags: string[],
+): void {
+  const store = useAssetStore.getState();
+  if (store.assets.some((a) => a.id === meta.id)) return;
+  store.setAssets([...store.assets, {
+    id: meta.id,
+    filename: meta.filename,
+    original_name: originalName || meta.filename,
+    mime_type: meta.mimeType,
+    size_bytes: meta.sizeBytes,
+    tags,
+    created_at: new Date().toISOString(),
+  }]);
 }
