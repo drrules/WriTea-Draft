@@ -1,3 +1,4 @@
+import { useLocationStore } from '../stores/locationStore';
 import type { ParsedWritea } from '../utils/writeaFormat';
 import { hydrateEditorStoresFromContent } from '../utils/hydrateStores';
 import { createStoredVersion, readStoredVersion, toVersionSummary } from '../services/scriptVersions';
@@ -1623,6 +1624,7 @@ const MenuBar: React.FC<MenuBarProps> = ({
     store.setDocumentTitle('Untitled Screenplay');
     useAssetStore.getState().setAssets([]);
     useVersionStore.getState().setVersions([]);
+    useLocationStore.getState().setLocations([]);
     store.setBeats([]);
     store.setBeatColumns([]);
     store.setBeatArrangeMode('auto');

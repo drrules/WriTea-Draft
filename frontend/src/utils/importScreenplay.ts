@@ -11,6 +11,7 @@
  * title, clearing project context, marking the source — because those differ
  * between entry points.
  */
+import { useLocationStore } from '../stores/locationStore';
 import { useVersionStore } from '../stores/versionStore';
 import { splitCastDescription } from './castNotes';
 import type { JSONContent } from '@tiptap/react';
@@ -111,6 +112,7 @@ export function resetStoresForImport(): void {
   store.setCharacterProfiles([]);
   useAssetStore.getState().setAssets([]);
   useVersionStore.getState().setVersions([]);
+  useLocationStore.getState().setLocations([]);
   store.setScenes([]);
   store.resetRevisionState();
   // Genre & pacing belong to the script being replaced, not the import.

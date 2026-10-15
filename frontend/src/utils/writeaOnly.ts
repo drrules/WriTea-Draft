@@ -1,3 +1,4 @@
+import { locationHasDetails } from './locations';
 import { collectScratchIds } from './scratchRefs';
 
 /**
@@ -16,5 +17,7 @@ export function writeaOnlyContent(content: Record<string, unknown> | null | unde
   if (Array.isArray(relationships) && relationships.length > 0) reasons.push('character relationships');
   const versions = content['_versions'];
   if (Array.isArray(versions) && versions.length > 0) reasons.push('version history');
+  const locations = content['_locations'];
+  if (Array.isArray(locations) && locations.some(locationHasDetails)) reasons.push('location details');
   return reasons;
 }

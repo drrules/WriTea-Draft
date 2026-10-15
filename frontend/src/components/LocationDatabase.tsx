@@ -1,8 +1,8 @@
-import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useCallback, useMemo, useRef } from 'react';
 import type { Editor } from '@tiptap/react';
 import { useEditorStore } from '../stores/editorStore';
-import { useProjectStore } from '../stores/projectStore';
-import { api, type LocationEntry } from '../services/api';
+import { useLocationStore, type LocationEntry } from '../stores/locationStore';
+import { discoverLocationEntries, newLocationEntry, parseLocationFromHeading } from '../utils/locations';
 import { showToast } from './Toast';
 import { useDelayedUnmount, useSwipeDismiss } from '../hooks/useTouch';
 import { blockContentRange, singleLine } from '../utils/nodeText';
@@ -19,51 +19,25 @@ const TYPE_LABEL: Record<string, string> = {
   both: 'Both',
 };
 
-/** Parse location name from a scene heading string. */
-const PREFIX_RE = /^(INT\.?\/?EXT\.?|EXT\.?\/?INT\.?|INT\.?|EXT\.?|I\/E\.?)\s+/i;
-const TIME_WORDS = 'DAY|NIGHT|DAWN|DUSK|MORNING|AFTERNOON|EVENING|SUNSET|SUNRISE|LATER|CONTINUOUS|SAME TIME|MOMENTS LATER|SAME|MAGIC HOUR';
-
-function parseLocationFromHeading(heading: string): string {
-  let rest = heading.trim();
-  const prefix = rest.match(PREFIX_RE);
-  if (prefix && prefix.index !== undefined) rest = rest.slice(prefix.index + prefix[0].length);
-  const dashTime = rest.match(new RegExp(`\\s+-\\s+(${TIME_WORDS})\\.?$`, 'i'));
-  if (dashTime) rest = rest.slice(0, -dashTime[0].length);
-  else {
-    const dotTime = rest.match(new RegExp(`\\.\\s*(${TIME_WORDS})\\.?$`, 'i'));
-    if (dotTime) rest = rest.slice(0, -dotTime[0].length);
-  }
-  return rest.replace(/^[\s.]+|[\s.]+$/g, '').toUpperCase();
-}
-
 const LocationDatabase: React.FC<Props> = ({ editor, style }) => {
-  const { locationDatabaseOpen, toggleLocationDatabase, scenes } = useEditorStore();
-  const { currentProject } = useProjectStore();
-  const [locations, setLocations] = useState<LocationEntry[]>([]);
-  const [loading, setLoading] = useState(false);
+  const { locationDatabaseOpen, toggleLocationDatabase, scenes, setSaveStatus } = useEditorStore();
+  const locations = useLocationStore((s) => s.locations);
+  const setLocations = useLocationStore((s) => s.setLocations);
+  // Every change marks the script unsaved: the list lives inside the file.
+  const commit = useCallback((next: LocationEntry[]) => {
+    setLocations(next);
+    setSaveStatus('unsaved');
+  }, [setLocations, setSaveStatus]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState<Partial<LocationEntry>>({});
   const [search, setSearch] = useState('');
+  const [newName, setNewName] = useState('');
 
   const panelRef = useRef<HTMLDivElement>(null);
 
   const { shouldRender, animationState } = useDelayedUnmount(locationDatabaseOpen, 250);
   useSwipeDismiss(panelRef, { direction: 'right', onDismiss: toggleLocationDatabase, enabled: shouldRender });
-
-  // Load locations when panel opens or project changes
-  useEffect(() => {
-    if (!locationDatabaseOpen || !currentProject) return;
-    let cancelled = false;
-    setLoading(true);
-    api.listLocations(currentProject.id)
-      .then((list) => { if (!cancelled) setLocations(list); })
-      .catch((err) => {
-        if (!cancelled) showToast(err instanceof Error ? err.message : 'Failed to load locations', 'error');
-      })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, [locationDatabaseOpen, currentProject]);
 
   // Map location name → scenes referencing it, derived from current scenes store
   const locationSceneCounts = useMemo(() => {
@@ -83,23 +57,31 @@ const LocationDatabase: React.FC<Props> = ({ editor, style }) => {
     return fromName + fromAliases;
   }, [locationSceneCounts]);
 
-  const discovered = useCallback(async () => {
-    if (!currentProject) return;
-    setLoading(true);
-    try {
-      const result = await api.discoverLocations(currentProject.id);
-      setLocations(result.locations);
-      if (result.discovered > 0) {
-        showToast(`Discovered ${result.discovered} new location${result.discovered === 1 ? '' : 's'}`, 'success');
-      } else {
-        showToast('No new locations found', 'success');
-      }
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Discovery failed', 'error');
-    } finally {
-      setLoading(false);
+  const discovered = useCallback(() => {
+    const found = discoverLocationEntries(scenes.map((s) => s.heading), locations);
+    if (found.length > 0) commit([...locations, ...found]);
+    showToast(
+      found.length > 0
+        ? `Discovered ${found.length} new location${found.length === 1 ? '' : 's'}`
+        : 'No new locations found',
+      'success',
+    );
+  }, [scenes, locations, commit]);
+
+  const handleAdd = useCallback(() => {
+    const name = newName.trim().toUpperCase();
+    if (!name) return;
+    const existing = locations.find((l) => l.name === name || l.aliases.includes(name));
+    if (existing) {
+      setSelectedId(existing.id);
+      setNewName('');
+      return;
     }
-  }, [currentProject]);
+    const entry = newLocationEntry(name, 'interior');
+    commit([...locations, entry]);
+    setSelectedId(entry.id);
+    setNewName('');
+  }, [newName, locations, commit]);
 
   const startEdit = useCallback((loc: LocationEntry) => {
     setEditingId(loc.id);
@@ -111,31 +93,25 @@ const LocationDatabase: React.FC<Props> = ({ editor, style }) => {
     setDraft({});
   }, []);
 
-  const saveEdit = useCallback(async () => {
-    if (!currentProject || !editingId) return;
-    try {
-      const updated = await api.updateLocation(currentProject.id, editingId, draft);
-      setLocations((prev) => prev.map((l) => (l.id === editingId ? updated : l)));
-      setEditingId(null);
-      setDraft({});
-      showToast('Location updated', 'success');
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Save failed', 'error');
+  const saveEdit = useCallback(() => {
+    if (!editingId) return;
+    const name = (draft.name || '').trim().toUpperCase();
+    if (!name) {
+      showToast('A location needs a name', 'error');
+      return;
     }
-  }, [currentProject, editingId, draft]);
+    commit(locations.map((l) => (l.id === editingId ? ({ ...l, ...draft, name } as LocationEntry) : l)));
+    setEditingId(null);
+    setDraft({});
+    showToast('Location updated', 'success');
+  }, [editingId, draft, locations, commit]);
 
-  const handleDelete = useCallback(async (loc: LocationEntry) => {
-    if (!currentProject) return;
+  const handleDelete = useCallback((loc: LocationEntry) => {
     if (!window.confirm(`Delete location "${loc.name}"? Scene headings will not be changed.`)) return;
-    try {
-      await api.deleteLocation(currentProject.id, loc.id);
-      setLocations((prev) => prev.filter((l) => l.id !== loc.id));
-      if (selectedId === loc.id) setSelectedId(null);
-      showToast('Location deleted', 'success');
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Delete failed', 'error');
-    }
-  }, [currentProject, selectedId]);
+    commit(locations.filter((l) => l.id !== loc.id));
+    if (selectedId === loc.id) setSelectedId(null);
+    showToast('Location deleted', 'success');
+  }, [locations, selectedId, commit]);
 
   const handleRenameInHeadings = useCallback((loc: LocationEntry, newName: string) => {
     if (!editor) return;
@@ -219,10 +195,9 @@ const LocationDatabase: React.FC<Props> = ({ editor, style }) => {
         <button
           className="location-db-discover"
           onClick={discovered}
-          disabled={loading}
-          title="Scan scripts and auto-create location entries"
+          title="Scan the scene headings and add an entry for each new location"
         >
-          {loading ? 'Scanning…' : '⟳ Discover'}
+          ⟳ Discover
         </button>
         <button className="location-db-close" onClick={toggleLocationDatabase} title="Close">×</button>
       </div>
@@ -236,11 +211,19 @@ const LocationDatabase: React.FC<Props> = ({ editor, style }) => {
         />
       </div>
 
+      <div className="location-db-search">
+        <input
+          type="text"
+          placeholder="Add a location… (press Enter)"
+          value={newName}
+          onChange={(e) => setNewName(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') handleAdd(); }}
+        />
+      </div>
+
       <div className="location-db-body">
         <div className="location-db-list">
-          {loading && locations.length === 0 ? (
-            <div className="location-db-empty">Loading…</div>
-          ) : filteredLocations.length === 0 ? (
+          {filteredLocations.length === 0 ? (
             <div className="location-db-empty">
               {locations.length === 0
                 ? 'No locations yet. Click Discover to auto-create from scene headings.'

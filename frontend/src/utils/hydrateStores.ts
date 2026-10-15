@@ -12,6 +12,8 @@
  * grammar rules and the grammar toggle. Auto spell check itself is an
  * app-wide setting and is not part of the file.
  */
+import { sanitizeLocations } from './locations';
+import { useLocationStore } from '../stores/locationStore';
 import { useVersionStore } from '../stores/versionStore';
 import { sanitizeStoredVersions } from '../services/scriptVersions';
 import { useEditorStore, DEFAULT_TAG_CATEGORIES, DEFAULT_PAGE_LAYOUT } from '../stores/editorStore';
@@ -108,6 +110,7 @@ export function hydrateEditorStoresFromContent(
   const assetList = parseAttr<unknown>(c._assets, []);
   useAssetStore.getState().setAssets(Array.isArray(assetList) ? (assetList as Asset[]) : []);
   useVersionStore.getState().setVersions(sanitizeStoredVersions(parseAttr<unknown>(c._versions, [])));
+  useLocationStore.getState().setLocations(sanitizeLocations(parseAttr<unknown>(c._locations, [])));
 
   if (typeof c._templateId === 'string' && c._templateId) {
     try {

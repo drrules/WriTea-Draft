@@ -14,6 +14,7 @@
  * Keep `SAVE_METADATA_KEYS` in step with the object built below — the backup
  * and .writea round-trip tests assert the two agree.
  */
+import { useLocationStore } from '../stores/locationStore';
 import { useVersionStore } from '../stores/versionStore';
 import type { Editor } from '@tiptap/react';
 import { useEditorStore } from '../stores/editorStore';
@@ -43,6 +44,7 @@ export const SAVE_METADATA_KEYS = [
   '_customDictWords',
   '_assets',
   '_versions',
+  '_locations',
   '_enabledGlobalDicts',
   '_projectDictEnabled',
   '_ignoredGrammarRules',
@@ -113,6 +115,8 @@ export function buildSaveContent(editor: Editor | null): Record<string, unknown>
     _assets: useAssetStore.getState().assets,
     // The check-ins taken of this script, each a compressed copy of it.
     _versions: useVersionStore.getState().versions,
+    // The places the writer has listed; part of the script file.
+    _locations: useLocationStore.getState().locations,
     // The parts of an opened .fdx this app does not model, written back on save.
     _fdxRaw: store.fdxRaw,
   };
