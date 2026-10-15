@@ -5,9 +5,10 @@
  *
  * Two restore paths, and the default is deliberately the non-destructive one:
  *
- *   - **Open as New Script** creates a new script and navigates to it, so the
- *     normal load path does all the store hydration. Nothing is overwritten,
- *     and there is no second hydration implementation to drift out of sync.
+ *   - **Open as New Script** loads the backup into the editor as a new,
+ *     unsaved document. Nothing is overwritten, and the editor's own load
+ *     steps do all the store hydration, so there is no second implementation
+ *     to drift out of sync.
  *   - **Replace Current Script** overwrites, behind a confirmation, and takes a
  *     snapshot of the current state first so the replace is itself undoable.
  *
@@ -16,16 +17,11 @@
  * single-script and additive; the two must not share code or vocabulary.
  */
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useProjectStore } from '../stores/projectStore';
-import { scriptApi } from '../services/scriptApi';
-import { api } from '../services/api';
 import {
   listSnapshots, readSnapshot, deleteSnapshot, revealSnapshot, writeSnapshot,
   supportsRevealBackup,
   type BackupEntry,
 } from '../services/backupService';
-import { unpackAssets } from '../services/snapshotAssets';
 import { parseWritea, type ParsedWritea } from '../utils/writeaFormat';
 import { relativeTime } from '../utils/relativeTime';
 import { docHasAnyText } from '../utils/docText';
@@ -41,6 +37,11 @@ interface Props {
    * without the undo.
    */
   onBeforeReplace?: () => { content: Record<string, unknown>; title: string } | undefined;
+  /**
+   * Puts a backup into the open editor. 'new' opens it as a new unsaved
+   * document; 'replace' keeps the open file and marks it unsaved.
+   */
+  onRestore: (backup: ParsedWritea, mode: 'new' | 'replace', title: string) => Promise<void>;
 }
 
 function formatBytes(n: number): string {
@@ -66,10 +67,7 @@ function previewText(content: Record<string, unknown>, limit = 1500): string {
   return parts.join('').slice(0, limit).trim();
 }
 
-const RecoverBackupDialog: React.FC<Props> = ({ open, onClose, onBeforeReplace }) => {
-  const navigate = useNavigate();
-  const { currentProject, currentScriptId, triggerScriptReload } = useProjectStore();
-
+const RecoverBackupDialog: React.FC<Props> = ({ open, onClose, onBeforeReplace, onRestore }) => {
   const [entries, setEntries] = useState<BackupEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -120,7 +118,7 @@ const RecoverBackupDialog: React.FC<Props> = ({ open, onClose, onBeforeReplace }
   const grouped = useMemo(() => {
     const groups = new Map<string, BackupEntry[]>();
     for (const e of entries) {
-      const label = e.project ? `${e.project} — ${e.title}` : e.title;
+      const label = e.project ? `${e.project} / ${e.title}` : e.title;
       const list = groups.get(label);
       if (list) list.push(e);
       else groups.set(label, [e]);
@@ -130,10 +128,6 @@ const RecoverBackupDialog: React.FC<Props> = ({ open, onClose, onBeforeReplace }
 
   const restoreAsNew = useCallback(async () => {
     if (!selected || !preview) return;
-    if (!currentProject) {
-      showToast('Open or create a project first, then restore into it', 'error');
-      return;
-    }
     if (!docHasAnyText(preview.content)) {
       showToast('That backup has no script content', 'error');
       return;
@@ -141,27 +135,18 @@ const RecoverBackupDialog: React.FC<Props> = ({ open, onClose, onBeforeReplace }
     setBusy(true);
     try {
       const stamp = selected.date.toLocaleString();
-      const created = await api.createScript(currentProject.id, {
-        title: `${preview.meta.title || selected.title} (restored ${stamp})`,
-        content: preview.content,
-      });
-      if (preview.assets.length > 0) {
-        await unpackAssets(currentProject.id, preview.assets);
-      }
-      showToast('Backup restored as a new script', 'success');
+      await onRestore(preview, 'new', `${preview.meta.title || selected.title} (restored ${stamp})`);
+      showToast('Backup opened as a new script. Save it to keep it.', 'success');
       onClose();
-      // Navigating makes the normal script loader hydrate every store, so
-      // there is no separate restore path that could miss something.
-      navigate(`/project/${currentProject.id}/edit/${created.meta.id}`);
     } catch (err) {
       showToast(`Restore failed: ${err instanceof Error ? err.message : String(err)}`, 'error');
     } finally {
       setBusy(false);
     }
-  }, [selected, preview, currentProject, navigate, onClose]);
+  }, [selected, preview, onRestore, onClose]);
 
   const replaceCurrent = useCallback(async () => {
-    if (!selected || !preview || !currentProject || !currentScriptId) return;
+    if (!selected || !preview) return;
     if (!docHasAnyText(preview.content)) {
       showToast('That backup has no script content', 'error');
       return;
@@ -170,30 +155,23 @@ const RecoverBackupDialog: React.FC<Props> = ({ open, onClose, onBeforeReplace }
     try {
       // Snapshot the current state first, so replacing is itself undoable.
       // Marked 'manual' so retention never prunes the safety copy. A failure
-      // here is not fatal — warn and let the user decide.
+      // here is not fatal: warn and let the user decide.
       const current = onBeforeReplace?.();
       if (current) {
         try {
           await writeSnapshot({
             content: current.content,
             title: current.title,
-            projectId: currentProject.id,
-            scriptId: currentScriptId,
-            projectTitle: currentProject.name,
             kind: 'manual',
           });
         } catch (err) {
           console.warn('[backup] safety snapshot before replace failed', err);
-          showToast('Could not save a safety copy first — replacing anyway', 'info');
+          showToast('Could not save a safety copy first, replacing anyway', 'info');
         }
       }
 
-      await scriptApi.saveScript(currentProject.id, currentScriptId, { content: preview.content });
-      if (preview.assets.length > 0) {
-        await unpackAssets(currentProject.id, preview.assets);
-      }
-      triggerScriptReload();
-      showToast('Current script replaced from backup', 'success');
+      await onRestore(preview, 'replace', preview.meta.title || selected.title);
+      showToast('Current script replaced from backup. Save to keep it.', 'success');
       onClose();
     } catch (err) {
       showToast(`Restore failed: ${err instanceof Error ? err.message : String(err)}`, 'error');
@@ -201,7 +179,7 @@ const RecoverBackupDialog: React.FC<Props> = ({ open, onClose, onBeforeReplace }
       setBusy(false);
       setConfirmReplace(false);
     }
-  }, [selected, preview, currentProject, currentScriptId, triggerScriptReload, onClose, onBeforeReplace]);
+  }, [selected, preview, onRestore, onClose, onBeforeReplace]);
 
   const handleDelete = useCallback(async () => {
     if (!selected) return;
@@ -245,7 +223,7 @@ const RecoverBackupDialog: React.FC<Props> = ({ open, onClose, onBeforeReplace }
 
             {!loading && loadError && (
               <div className="recover-backup-empty">
-                Can't read the backup folder — {loadError}
+                Can't read the backup folder: {loadError}
               </div>
             )}
 
@@ -343,7 +321,7 @@ const RecoverBackupDialog: React.FC<Props> = ({ open, onClose, onBeforeReplace }
             </button>
             <button
               className="dialog-btn"
-              disabled={!preview || busy || !currentScriptId}
+              disabled={!preview || busy}
               onClick={() => setConfirmReplace(true)}
             >
               Replace Current Script…

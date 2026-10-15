@@ -1,3 +1,5 @@
+import type { ParsedWritea } from '../utils/writeaFormat';
+import { hydrateEditorStoresFromContent } from '../utils/hydrateStores';
 import { createStoredVersion, readStoredVersion, toVersionSummary } from '../services/scriptVersions';
 import { useVersionStore } from '../stores/versionStore';
 import { writeaOnlyContent } from '../utils/writeaOnly';
@@ -1437,6 +1439,33 @@ const MenuBar: React.FC<MenuBarProps> = ({
       showToast(`Import failed: ${err instanceof Error ? err.message : String(err)}`, 'error');
     }
   }, [editor, clearTrackChanges, setCurrentProject, setCurrentScriptId, setScripts]);
+
+  /**
+   * Put a recovered backup into the editor, the same way opening a .writea
+   * does. 'new' leaves it as an unsaved document with no file behind it;
+   * 'replace' keeps the open file and title and marks it unsaved.
+   */
+  const restoreBackup = useCallback(async (backup: ParsedWritea, mode: 'new' | 'replace', title: string) => {
+    if (!editor) throw new Error('The editor is not ready yet.');
+    clearTrackChanges();
+    const store = useEditorStore.getState();
+    resetStoresForImport();
+    store.setFdxRaw(null);
+    hydrateEditorStoresFromContent(backup.content);
+    if (backup.assets?.length) {
+      const { unpackScratchAssets } = await import('../services/snapshotAssets');
+      await unpackScratchAssets(backup.assets);
+    }
+    editor.commands.setContent(backup.content as Parameters<typeof editor.commands.setContent>[0], true);
+    clearEditorHistory(editor);
+    if (mode === 'new') {
+      store.setDocumentTitle(title);
+      store.setImportedSource(null);
+      store.setDocumentOrigin(null);
+      useBackupStatusStore.getState().noteDocumentOpened();
+    }
+    store.setSaveStatus('unsaved');
+  }, [editor, clearTrackChanges]);
 
   /**
    * Import an AV spreadsheet as a new AV document.
@@ -3490,6 +3519,7 @@ const MenuBar: React.FC<MenuBarProps> = ({
         if (!content) return undefined;
         return { content, title: useEditorStore.getState().documentTitle || 'Untitled' };
       }}
+      onRestore={restoreBackup}
     />
 
     {aboutOpen && (
