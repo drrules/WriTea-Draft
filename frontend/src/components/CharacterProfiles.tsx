@@ -63,7 +63,7 @@ const InlineRelForm: React.FC<{
       <textarea
         value={desc}
         onChange={(e) => setDesc(e.target.value)}
-        placeholder="Describe the relationship..."
+        placeholder="Here’s where you describe how these characters are connected."
         rows={2}
         className="char-profile-rel-form-desc"
       />
@@ -574,7 +574,7 @@ const CharacterProfiles: React.FC<CharacterProfilesProps> = ({ editor, style }) 
         <MiniRichText
           value={prof.description}
           onChange={(html) => upsertCharacterProfile(charName, { description: html })}
-          placeholder="A weary detective in his 50s, haunted by a cold case..."
+          placeholder="Here’s where you describe the character!"
           minHeight={isModal ? 80 : 50}
         />
 
@@ -599,7 +599,7 @@ const CharacterProfiles: React.FC<CharacterProfilesProps> = ({ editor, style }) 
               className="char-profile-input"
               value={prof.gender}
               onChange={(e) => upsertCharacterProfile(charName, { gender: e.target.value })}
-              placeholder="e.g. Male"
+              placeholder="NB/F/M/etc."
             />
           </div>
           <div className="char-profile-meta-field">
@@ -609,7 +609,7 @@ const CharacterProfiles: React.FC<CharacterProfilesProps> = ({ editor, style }) 
               className="char-profile-input"
               value={prof.age}
               onChange={(e) => upsertCharacterProfile(charName, { age: e.target.value })}
-              placeholder="e.g. 30s"
+              placeholder="0-∞"
             />
           </div>
         </div>
@@ -683,7 +683,7 @@ const CharacterProfiles: React.FC<CharacterProfilesProps> = ({ editor, style }) 
         <MiniRichText
           value={prof.backstory}
           onChange={(html) => upsertCharacterProfile(charName, { backstory: html })}
-          placeholder="Character history, motivations, secrets..."
+          placeholder="Here’s where you write the character’s personal history. How did they get here?"
           minHeight={isModal ? 100 : 60}
         />
 
@@ -692,7 +692,7 @@ const CharacterProfiles: React.FC<CharacterProfilesProps> = ({ editor, style }) 
         <MiniRichText
           value={prof.arc || ''}
           onChange={(html) => upsertCharacterProfile(charName, { arc: html })}
-          placeholder="How does this character change through the story..."
+          placeholder="Here’s where you define the character’s arc throughout the story"
           minHeight={isModal ? 80 : 50}
         />
 
@@ -704,28 +704,28 @@ const CharacterProfiles: React.FC<CharacterProfilesProps> = ({ editor, style }) 
             <MiniRichText
               value={prof.speechPattern || ''}
               onChange={(html) => upsertCharacterProfile(charName, { speechPattern: html })}
-              placeholder="Short sentences, formal tone, uses contractions..."
+              placeholder="How does the character speak?"
               minHeight={40}
             />
             <label className="char-profile-label">Vocabulary</label>
             <MiniRichText
               value={prof.vocabulary || ''}
               onChange={(html) => upsertCharacterProfile(charName, { vocabulary: html })}
-              placeholder="Educated, uses legal terms, street slang..."
+              placeholder="These are the words they use."
               minHeight={40}
             />
             <label className="char-profile-label">Verbal Tics</label>
             <MiniRichText
               value={prof.verbalTics || ''}
               onChange={(html) => upsertCharacterProfile(charName, { verbalTics: html })}
-              placeholder="Says 'you see' often, clears throat before lying..."
+              placeholder="How they actually speak or their patter."
               minHeight={40}
             />
             <label className="char-profile-label">Sample Dialogue</label>
             <MiniRichText
               value={prof.sampleDialogue || ''}
               onChange={(html) => upsertCharacterProfile(charName, { sampleDialogue: html })}
-              placeholder="3-5 representative lines from the script..."
+              placeholder="Here’s where you add a few key lines to drop into the character."
               minHeight={40}
             />
           </div>
@@ -1073,7 +1073,7 @@ const CharacterProfiles: React.FC<CharacterProfilesProps> = ({ editor, style }) 
                         <MiniRichText
                           value={profile.description}
                           onChange={(html) => upsertCharacterProfile(name, { description: html })}
-                          placeholder="A weary detective in his 50s, haunted by a cold case..."
+                          placeholder="Here’s where you describe the character!"
                           minHeight={50}
                         />
 
@@ -1098,7 +1098,7 @@ const CharacterProfiles: React.FC<CharacterProfilesProps> = ({ editor, style }) 
                               className="char-profile-input"
                               value={profile.gender}
                               onChange={(e) => upsertCharacterProfile(name, { gender: e.target.value })}
-                              placeholder="e.g. Male"
+                              placeholder="NB/F/M/etc."
                             />
                           </div>
                           <div className="char-profile-meta-field">
@@ -1108,7 +1108,7 @@ const CharacterProfiles: React.FC<CharacterProfilesProps> = ({ editor, style }) 
                               className="char-profile-input"
                               value={profile.age}
                               onChange={(e) => upsertCharacterProfile(name, { age: e.target.value })}
-                              placeholder="e.g. 30s"
+                              placeholder="0-∞"
                             />
                           </div>
                         </div>
@@ -1187,7 +1187,7 @@ const CharacterProfiles: React.FC<CharacterProfilesProps> = ({ editor, style }) 
                       <MiniRichText
                         value={profile.backstory}
                         onChange={(html) => upsertCharacterProfile(name, { backstory: html })}
-                        placeholder="Character history, motivations, secrets..."
+                        placeholder="Here’s where you write the character’s personal history. How did they get here?"
                         minHeight={60}
                       />
 
@@ -1195,7 +1195,7 @@ const CharacterProfiles: React.FC<CharacterProfilesProps> = ({ editor, style }) 
                       <MiniRichText
                         value={profile.arc || ''}
                         onChange={(html) => upsertCharacterProfile(name, { arc: html })}
-                        placeholder="How does this character change through the story..."
+                        placeholder="Here’s where you define the character’s arc throughout the story"
                         minHeight={50}
                       />
 
@@ -1207,28 +1207,28 @@ const CharacterProfiles: React.FC<CharacterProfilesProps> = ({ editor, style }) 
                           <MiniRichText
                             value={profile.speechPattern || ''}
                             onChange={(html) => upsertCharacterProfile(name, { speechPattern: html })}
-                            placeholder="Short sentences, formal tone..."
+                            placeholder="How does the character speak?"
                             minHeight={40}
                           />
                           <label className="char-profile-label">Vocabulary</label>
                           <MiniRichText
                             value={profile.vocabulary || ''}
                             onChange={(html) => upsertCharacterProfile(name, { vocabulary: html })}
-                            placeholder="Educated, uses legal terms..."
+                            placeholder="These are the words they use."
                             minHeight={40}
                           />
                           <label className="char-profile-label">Verbal Tics</label>
                           <MiniRichText
                             value={profile.verbalTics || ''}
                             onChange={(html) => upsertCharacterProfile(name, { verbalTics: html })}
-                            placeholder="Says 'you see' often..."
+                            placeholder="How they actually speak or their patter."
                             minHeight={40}
                           />
                           <label className="char-profile-label">Sample Dialogue</label>
                           <MiniRichText
                             value={profile.sampleDialogue || ''}
                             onChange={(html) => upsertCharacterProfile(name, { sampleDialogue: html })}
-                            placeholder="3-5 representative lines..."
+                            placeholder="Here’s where you add a few key lines to drop into the character."
                             minHeight={40}
                           />
                         </div>
