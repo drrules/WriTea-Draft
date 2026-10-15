@@ -26,8 +26,11 @@ function commit(next: Asset[]): void {
 }
 
 /** Ask before an asset leaves the list, with the native dialog where there is one. */
-async function confirmRemove(name: string): Promise<boolean> {
-  const message = `Remove "${name}" from this script's assets?\n\nYou can undo this until you close the Asset Manager.`;
+async function confirmRemove(name: string, characters: string[] = []): Promise<boolean> {
+  const also = characters.length > 0
+    ? `\n\nIt is also used on character profiles (${characters.join(', ')}) and will be removed from those too.`
+    : '';
+  const message = `Remove "${name}" from this script's assets?${also}\n\nYou can undo this until you close the Asset Manager.`;
   try {
     const { ask } = await import('@tauri-apps/plugin-dialog');
     return await ask(message, { title: 'Remove asset', kind: 'warning', okLabel: 'Remove', cancelLabel: 'Cancel' });
@@ -50,7 +53,7 @@ const AssetManager: React.FC = () => {
   const [previewAsset, setPreviewAsset] = useState<Asset | null>(null);
   const [editingTagsId, setEditingTagsId] = useState<string | null>(null);
   const [editTagsValue, setEditTagsValue] = useState('');
-  const [lastRemoved, setLastRemoved] = useState<{ asset: Asset; index: number } | null>(null);
+  const [lastRemoved, setLastRemoved] = useState<{ asset: Asset; index: number; links: Array<{ name: string; index: number }> } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const addFiles = useCallback(async (files: File[]) => {
@@ -125,9 +128,23 @@ const AssetManager: React.FC = () => {
     const index = current.findIndex((a) => a.id === assetId);
     if (index === -1) return;
     const asset = current[index];
-    if (!(await confirmRemove(asset.original_name))) return;
+    // Character profiles that use this picture: it comes off them too, and
+    // Undo puts it back in the same place.
+    const links = useEditorStore.getState().characterProfiles.flatMap((p) => {
+      const at = (p.images ?? []).indexOf(assetId);
+      return at === -1 ? [] : [{ name: p.name, index: at }];
+    });
+    if (!(await confirmRemove(asset.original_name, links.map((l) => l.name)))) return;
     commit(useAssetStore.getState().assets.filter((a) => a.id !== assetId));
-    setLastRemoved({ asset, index });
+    for (const link of links) {
+      const profile = useEditorStore.getState().characterProfiles.find((p) => p.name === link.name);
+      if (profile) {
+        useEditorStore.getState().upsertCharacterProfile(link.name, {
+          images: (profile.images ?? []).filter((id) => id !== assetId),
+        });
+      }
+    }
+    setLastRemoved({ asset, index, links });
   };
 
   const handleUndoRemove = () => {
@@ -137,6 +154,15 @@ const AssetManager: React.FC = () => {
       const next = [...current];
       next.splice(Math.min(lastRemoved.index, next.length), 0, lastRemoved.asset);
       commit(next);
+    }
+    for (const link of lastRemoved.links) {
+      const profile = useEditorStore.getState().characterProfiles.find((p) => p.name === link.name);
+      const images = profile?.images ?? [];
+      if (profile && !images.includes(lastRemoved.asset.id)) {
+        const restored = [...images];
+        restored.splice(Math.min(link.index, restored.length), 0, lastRemoved.asset.id);
+        useEditorStore.getState().upsertCharacterProfile(link.name, { images: restored });
+      }
     }
     setLastRemoved(null);
   };
