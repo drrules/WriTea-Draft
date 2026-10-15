@@ -388,6 +388,58 @@ const MenuBar: React.FC<MenuBarProps> = ({
     [editor, buildSaveContent],
   );
 
+  /** Files already offered an FDX copy, so the offer is made once and not on every save. */
+  const fdxOfferedRef = useRef<Set<string>>(new Set());
+
+  /**
+   * A .writea with nothing in it that FDX cannot hold is just a screenplay,
+   * and the writer may prefer it as a plain .fdx. Offered, never forced.
+   *
+   * Returns true or false when it handled the save (as an FDX), and null when
+   * the writer declined and the normal .writea save should carry on.
+   */
+  const offerFdxInstead = useCallback(async (origin: DocumentOrigin): Promise<boolean | null> => {
+    const { ask, save } = await import('@tauri-apps/plugin-dialog');
+    const lf = await import('../services/linkedFiles');
+    const s = useEditorStore.getState();
+    const message = `This can be saved as an FDX, it has no extra content.\n\nYour ${lf.basenameOf(origin.bookmark)} stays as it is.`;
+    let go = false;
+    try {
+      go = await ask(message, { title: 'Save as Final Draft?', kind: 'info', okLabel: 'Save as FDX', cancelLabel: 'Keep .writea' });
+    } catch {
+      go = window.confirm(message);
+    }
+    if (!go) return null;
+
+    const stem = lf.basenameOf(origin.bookmark).replace(/\.[^.]+$/, '');
+    const picked = await save({
+      title: 'Save as FDX',
+      defaultPath: lf.joinPath(lf.dirnameOf(origin.bookmark), `${stem}.fdx`),
+      filters: [{ name: 'Final Draft', extensions: ['fdx'] }],
+    });
+    if (!picked) return null;
+    const path = extensionOfPath(picked).toLowerCase() === 'fdx' ? picked : `${picked}.fdx`;
+    const name = lf.basenameOf(path);
+
+    s.setSaveStatus('saving');
+    try {
+      await saveDocumentInPlace(path, await serializeForOrigin('fdx'));
+      s.setDocumentOrigin({ bookmark: path, name, format: 'fdx' });
+      s.setSaveStatus('saved');
+      const payload = buildSaveContent();
+      if (payload) onDocumentSaved?.(JSON.stringify(payload));
+      clearRecoverySnapshot();
+      showToast(`Saved as ${name}. Your ${lf.basenameOf(origin.bookmark)} is unchanged.`, 'success');
+      return true;
+    } catch (err) {
+      console.error('Save as FDX failed:', err);
+      const msg = err instanceof Error ? err.message : String(err);
+      s.setSaveStatus('error', msg);
+      showToast(`Could not save ${name}: ${msg}`, 'error');
+      return false;
+    }
+  }, [serializeForOrigin, buildSaveContent, onDocumentSaved]);
+
   /**
    * An .fdx cannot hold everything a WriTea Draft script can (pictures, for
    * one), and saving over it would quietly drop them. So the original is left
@@ -422,6 +474,7 @@ const MenuBar: React.FC<MenuBarProps> = ({
     try {
       await saveDocumentInPlace(path, await serializeForOrigin('writea'));
       s.setDocumentOrigin({ bookmark: path, name, format: 'writea' });
+      fdxOfferedRef.current.add(path);
       s.setSaveStatus('saved');
       const payload = buildSaveContent();
       if (payload) onDocumentSaved?.(JSON.stringify(payload));
@@ -463,6 +516,15 @@ const MenuBar: React.FC<MenuBarProps> = ({
         return saveAsWriteaBeside(origin, extras);
       }
     }
+    // A .writea with no extras can be an FDX. Asked once per file, and only
+    // when the writer presses Save, never from auto-save.
+    if (origin.format === 'writea' && !auto && isDesktopTauri() && !fdxOfferedRef.current.has(origin.bookmark)) {
+      fdxOfferedRef.current.add(origin.bookmark);
+      if (writeaOnlyContent(buildSaveContent()).length === 0) {
+        const handled = await offerFdxInstead(origin);
+        if (handled !== null) return handled;
+      }
+    }
     const docBefore = editor?.state.doc;
     setSaveStatus('saving');
     try {
@@ -493,7 +555,7 @@ const MenuBar: React.FC<MenuBarProps> = ({
       }
       return false;
     }
-  }, [editor, serializeForOrigin, buildSaveContent, onDocumentSaved, saveAsWriteaBeside]);
+  }, [editor, serializeForOrigin, buildSaveContent, onDocumentSaved, saveAsWriteaBeside, offerFdxInstead]);
 
   // ── Save current editor content to backend ──
   const saveToFileAsRef = useRef<() => Promise<boolean>>(async () => false);
@@ -618,14 +680,16 @@ const MenuBar: React.FC<MenuBarProps> = ({
       const picked = await save({
         title: 'Save to File',
         defaultPath: lf.joinPath(defaultDir, linkedFileName(s.documentTitle || 'Untitled', preferred)),
+        // The type chosen decides the format. FDX is listed first, so it stays the default.
         filters: [
           { name: 'Final Draft', extensions: ['fdx'] },
+          { name: 'WriTea Draft', extensions: ['writea'] },
         ],
       });
       if (!picked) return false;
       let path = picked;
-      const ext = 'fdx' as const;
-      if (extensionOfPath(path).toLowerCase() !== 'fdx') path = `${path}.fdx`;
+      const ext: 'fdx' | 'writea' = extensionOfPath(path).toLowerCase() === 'writea' ? 'writea' : 'fdx';
+      if (extensionOfPath(path).toLowerCase() !== ext) path = `${path}.${ext}`;
       const name = lf.basenameOf(path);
 
       // One file, one script: two scripts saving to one file would overwrite
@@ -660,6 +724,8 @@ const MenuBar: React.FC<MenuBarProps> = ({
       await saveDocumentInPlace(path, await serializeForOrigin(ext));
       // The document is that file now: Save writes back to it from here on.
       s.setDocumentOrigin({ bookmark: path, name, format: ext });
+      // Chosen on purpose, so it is not offered an FDX copy afterwards.
+      if (ext === 'writea') fdxOfferedRef.current.add(path);
       // A draft still called "Untitled …" takes the file's name, as it would
       // if the file were opened; a title the writer chose is kept.
       const fileTitle = name.replace(/\.\w+$/, '');
