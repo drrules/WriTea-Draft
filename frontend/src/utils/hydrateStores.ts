@@ -7,18 +7,18 @@
  * them; importing an `.writea` file did not, so an imported backup came back
  * as bare text with every note and tag silently dropped.
  *
- * Scope note: this covers the metadata that lives purely in `editorStore` and
- * the template store. The script-load path in ScreenplayEditor additionally
- * rehydrates per-document dictionary and grammar state, which is entangled
- * with project-dictionary migration I/O and is deliberately not duplicated
- * here — spell/grammar preferences fall back to the current defaults on
- * import, which is the pre-existing behaviour.
+ * This also restores the spell and grammar state that travels with a script:
+ * ignored words, the project dictionary words, enabled dictionaries, ignored
+ * grammar rules and the grammar toggle. Auto spell check itself is an
+ * app-wide setting and is not part of the file.
  */
 import { useEditorStore, DEFAULT_TAG_CATEGORIES, DEFAULT_PAGE_LAYOUT } from '../stores/editorStore';
 import { useFormattingTemplateStore } from '../stores/formattingTemplateStore';
 import { hasSaveMetadata } from './saveContent';
 import { resolveSceneHeadingSpaceBefore } from './elementSpacing';
 import { restoreRevisionState } from './revisionState';
+import { spellChecker } from '../editor/spellchecker';
+import { grammarIgnore } from '../editor/grammar/grammarIgnore';
 import { normalizeScriptProfile } from './scriptProfile';
 
 /**
@@ -79,6 +79,29 @@ export function hydrateEditorStoresFromContent(
   // Always set: a script saved before profiles existed opens as Standard with
   // no genres, not with whatever the previous script had.
   store.setScriptProfile(normalizeScriptProfile(c._scriptProfile));
+
+  // Spell and grammar state carried by the file. Absent keys fall back to
+  // defaults, so opening one script never leaks another script's words.
+  const list = (v: unknown): string[] => {
+    const a = parseAttr<unknown>(v, []);
+    return Array.isArray(a) ? a.map(String) : [];
+  };
+  spellChecker.setIgnoredWords(list(c._ignoredWords));
+  spellChecker.setIgnoredOnce(list(c._ignoredOnce));
+  spellChecker.setProjectWords(list(c._customDictWords));
+  if (c._enabledGlobalDicts === undefined) {
+    // Saved before global dictionaries existed: keep the old Personal words.
+    const lib = store.customDictionaries;
+    spellChecker.setEnabledGlobalDicts(lib['Personal'] ? ['Personal'] : []);
+  } else {
+    spellChecker.setEnabledGlobalDicts(list(c._enabledGlobalDicts));
+  }
+  spellChecker.setProjectDictionaryEnabled(
+    typeof c._projectDictEnabled === 'boolean' ? c._projectDictEnabled : true,
+  );
+  grammarIgnore.setIgnoredRules(list(c._ignoredGrammarRules));
+  grammarIgnore.setIgnoredOnce(list(c._ignoredGrammarOnce));
+  store.setGrammarCheckEnabled(c._grammarCheckEnabled === true);
 
   if (typeof c._templateId === 'string' && c._templateId) {
     try {

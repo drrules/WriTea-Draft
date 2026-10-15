@@ -82,9 +82,8 @@ export function buildSaveContent(editor: Editor | null): Record<string, unknown>
     _templateId: tplStore.activeTemplateId,
     _ignoredWords: spellChecker.getIgnoredWords(),
     _ignoredOnce: spellChecker.getIgnoredOnce(),
-    // Project dictionary lives on the Project entity now; keep the script
-    // field empty so older clients don't show stale words after migration.
-    _customDictWords: [],
+    // The project dictionary travels with the file.
+    _customDictWords: spellChecker.getProjectWords(),
     _enabledGlobalDicts: spellChecker.getEnabledGlobalDicts(),
     _projectDictEnabled: spellChecker.isProjectDictionaryEnabled(),
     _ignoredGrammarRules: grammarIgnore.getIgnoredRules(),
