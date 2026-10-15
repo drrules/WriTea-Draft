@@ -2939,8 +2939,8 @@ const ScreenplayEditor: React.FC = () => {
             grammarIgnore.setIgnoredRules(grammarRules as string[]);
             const grammarOnce = parseAttr(c._ignoredGrammarOnce);
             grammarIgnore.setIgnoredOnce(grammarOnce as string[]);
-            // Restore per-document spell/grammar check toggles (default off)
-            store.setSpellCheckEnabled(c._spellCheckEnabled === true);
+            // Restore the per-document grammar check toggle (default off).
+            // Spell check is app-wide and is not stored in the script.
             store.setGrammarCheckEnabled(c._grammarCheckEnabled === true);
             // Restore per-document page layout (header/footer, margins)
             if (c._pageLayout && typeof c._pageLayout === 'object') {
@@ -3341,9 +3341,8 @@ const ScreenplayEditor: React.FC = () => {
         store.setBeatColumns([]);
         store.setPageLayout({ ...DEFAULT_PAGE_LAYOUT });
         store.setScriptProfile(normalizeScriptProfile((content as Record<string, unknown> | null | undefined)?._scriptProfile));
-        // Default per-doc spell/grammar to off; the block below overrides
-        // from the loaded content if the user had enabled them previously.
-        store.setSpellCheckEnabled(false);
+        // Default per-doc grammar to off; the block below overrides
+        // from the loaded content if the user had enabled it previously.
         store.setGrammarCheckEnabled(false);
         const parseAttr2 = (val: unknown): unknown[] => {
           if (typeof val === 'string') { try { const p = JSON.parse(val); return Array.isArray(p) ? p : []; } catch { return []; } }
@@ -3391,8 +3390,7 @@ const ScreenplayEditor: React.FC = () => {
           // offered the change once (issue #76).
           store.setSceneHeadingSpaceBefore(resolveSceneHeadingSpaceBefore(c));
           setSceneSpacingPrompt(predatesStandardSceneSpacing(c));
-          // Restore per-document spell/grammar check toggles
-          store.setSpellCheckEnabled(c._spellCheckEnabled === true);
+          // Restore the per-document grammar check toggle (spell check is app-wide)
           store.setGrammarCheckEnabled(c._grammarCheckEnabled === true);
           // Per-script project-dictionary toggle (default on).
           spellChecker.setProjectDictionaryEnabled(

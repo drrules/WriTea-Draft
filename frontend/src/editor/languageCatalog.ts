@@ -15,15 +15,15 @@ export interface BundledLanguage {
 }
 
 export const BUNDLED_LANGUAGES: BundledLanguage[] = [
-  { code: 'en_US', label: 'US English', file: 'en_US', sample: 'Aa' },
   { code: 'en_CA', label: 'Canadian English', file: 'en_CA', sample: 'Aa' },
+  { code: 'en_US', label: 'US English', file: 'en_US', sample: 'Aa' },
   { code: 'fr', label: 'French', file: 'fr', sample: 'Àà' },
   { code: 'es', label: 'Spanish', file: 'es_ES', sample: 'Ññ' },
 ];
 
 /** Always loaded first, so the checker has a working language while any
  *  other enabled language is still loading. */
-export const BUILTIN: BundledLanguage = BUNDLED_LANGUAGES[0];
+export const BUILTIN: BundledLanguage = BUNDLED_LANGUAGES.find((l) => l.code === 'en_US')!;
 
 const BY_CODE = new Map<string, BundledLanguage>(
   BUNDLED_LANGUAGES.map((l) => [l.code, l]),

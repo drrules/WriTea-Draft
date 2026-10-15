@@ -1464,13 +1464,11 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   navPanelWidth: 0,
   setNavPanelWidth: (w) => set({ navPanelWidth: w }),
 
-  // Spell & grammar check are per-document, not global. Default off; when the
-  // user enables them for a doc, the preference is saved alongside the
-  // script content (_spellCheckEnabled / _grammarCheckEnabled) and restored
-  // on next open.
-  spellCheckEnabled: false,
-  toggleSpellCheck: () => set((s) => ({ spellCheckEnabled: !s.spellCheckEnabled })),
-  setSpellCheckEnabled: (v) => set({ spellCheckEnabled: v }),
+  // Auto spell check is an app-wide setting: on by default and remembered
+  // between sessions. Grammar check is still per-document.
+  spellCheckEnabled: loadSpellCheckEnabled(),
+  toggleSpellCheck: () => set((s) => { saveSpellCheckEnabled(!s.spellCheckEnabled); return { spellCheckEnabled: !s.spellCheckEnabled }; }),
+  setSpellCheckEnabled: (v) => { saveSpellCheckEnabled(v); set({ spellCheckEnabled: v }); },
   spellModalOpen: false,
   setSpellModalOpen: (open) => set({ spellModalOpen: open }),
 
@@ -1622,3 +1620,12 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   setDocumentOrigin: (origin) =>
     set(origin ? { documentOrigin: origin, saveStatus: 'idle', saveError: null } : { documentOrigin: null }),
 }));
+
+
+// App-wide auto spell check preference. On unless the user switched it off.
+function loadSpellCheckEnabled(): boolean {
+  try { return localStorage.getItem('writeadraft:spellCheckEnabled') !== 'false'; } catch { return true; }
+}
+function saveSpellCheckEnabled(v: boolean): void {
+  try { localStorage.setItem('writeadraft:spellCheckEnabled', v ? 'true' : 'false'); } catch { /* ignore */ }
+}
