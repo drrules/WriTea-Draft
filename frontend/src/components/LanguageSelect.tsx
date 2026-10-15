@@ -17,6 +17,11 @@ const LanguageSelect: React.FC = () => {
   const handleChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     spellChecker.setEnabledLanguages([e.target.value]);
     saveEnabledLanguagePreference(spellChecker.getEnabledLanguages());
+    // Hand focus back to the script so typing carries on right away.
+    e.target.blur();
+    requestAnimationFrame(() => {
+      document.querySelector<HTMLElement>('.ProseMirror[contenteditable="true"]')?.focus();
+    });
   };
 
   return (
