@@ -19,6 +19,7 @@ import { resolveSceneHeadingSpaceBefore } from './elementSpacing';
 import { restoreRevisionState } from './revisionState';
 import { spellChecker } from '../editor/spellchecker';
 import { grammarIgnore } from '../editor/grammar/grammarIgnore';
+import { useAssetStore, type Asset } from '../stores/assetStore';
 import { normalizeScriptProfile } from './scriptProfile';
 
 /**
@@ -102,6 +103,8 @@ export function hydrateEditorStoresFromContent(
   grammarIgnore.setIgnoredRules(list(c._ignoredGrammarRules));
   grammarIgnore.setIgnoredOnce(list(c._ignoredGrammarOnce));
   store.setGrammarCheckEnabled(c._grammarCheckEnabled === true);
+  const assetList = parseAttr<unknown>(c._assets, []);
+  useAssetStore.getState().setAssets(Array.isArray(assetList) ? (assetList as Asset[]) : []);
 
   if (typeof c._templateId === 'string' && c._templateId) {
     try {

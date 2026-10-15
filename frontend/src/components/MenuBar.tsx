@@ -1508,6 +1508,7 @@ const MenuBar: React.FC<MenuBarProps> = ({
     store.setImportedSource(null);
     store.setFdxRaw(null);
     store.setDocumentTitle('Untitled Screenplay');
+    useAssetStore.getState().setAssets([]);
     store.setBeats([]);
     store.setBeatColumns([]);
     store.setBeatArrangeMode('auto');

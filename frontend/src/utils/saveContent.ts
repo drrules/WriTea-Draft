@@ -19,6 +19,7 @@ import { useEditorStore } from '../stores/editorStore';
 import { useFormattingTemplateStore } from '../stores/formattingTemplateStore';
 import { spellChecker } from '../editor/spellchecker';
 import { grammarIgnore } from '../editor/grammar/grammarIgnore';
+import { useAssetStore } from '../stores/assetStore';
 
 /**
  * Every `_`-prefixed key `buildSaveContent` writes. Used to separate app
@@ -39,6 +40,7 @@ export const SAVE_METADATA_KEYS = [
   '_ignoredWords',
   '_ignoredOnce',
   '_customDictWords',
+  '_assets',
   '_enabledGlobalDicts',
   '_projectDictEnabled',
   '_ignoredGrammarRules',
@@ -105,6 +107,8 @@ export function buildSaveContent(editor: Editor | null): Record<string, unknown>
     _revisionSettings: store.revisionSettings,
     // Pacing (which scales the runtime estimate) and genres.
     _scriptProfile: store.scriptProfile,
+    // This script's asset list; the bytes travel in the file's own assets.
+    _assets: useAssetStore.getState().assets,
     // The parts of an opened .fdx this app does not model, written back on save.
     _fdxRaw: store.fdxRaw,
   };

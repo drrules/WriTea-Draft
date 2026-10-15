@@ -19,6 +19,8 @@
 import { collectRecoverySnapshotScratchIds } from './recoveryService';
 import { sweepScratchAssets } from './scratchAssets';
 import { collectScratchIds } from '../utils/scratchRefs';
+import { useAssetStore } from '../stores/assetStore';
+import { useEditorStore } from '../stores/editorStore';
 import { peekSessionDoc } from '../utils/sessionDoc';
 
 /** Supplies the document currently in the editor, when there is one. */
@@ -47,6 +49,17 @@ export function collectKeepSet(): Set<string> {
 
   const stashed = peekSessionDoc();
   if (stashed?.doc) for (const id of collectScratchIds(stashed.doc)) keep.add(id);
+
+  // The script's asset list and character photos are not document nodes. The
+  // stores hold them for the open document, including while the writer is in Settings.
+  try {
+    for (const a of useAssetStore.getState().assets) keep.add(a.id);
+    for (const p of useEditorStore.getState().characterProfiles) {
+      for (const i of p.images ?? []) keep.add(i);
+    }
+  } catch (err) {
+    console.warn('[scratch] could not read the asset stores for the sweep:', err);
+  }
 
   return keep;
 }

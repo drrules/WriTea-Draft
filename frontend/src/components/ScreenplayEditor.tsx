@@ -53,6 +53,7 @@ import { docHasInlineImageBytes, docHasScratchImages } from '../utils/scratchRef
 import { setLiveScratchDocSource } from '../services/scratchSweep';
 
 import { useEditorStore, DEFAULT_PAGE_LAYOUT, DEFAULT_TAG_CATEGORIES, resolveMoresContds, resolveHeaderFooter, printedPageNumber, savedProfileFields, type SceneInfo } from '../stores/editorStore';
+import { useAssetStore } from '../stores/assetStore';
 import type { ElementType, HeaderFooterContent } from '../stores/editorStore';
 import HeaderFooterBand from './HeaderFooterBand';
 import HeaderFooterDialog from './HeaderFooterDialog';
@@ -2838,6 +2839,7 @@ const ScreenplayEditor: React.FC = () => {
           store.setTagCategories([...DEFAULT_TAG_CATEGORIES]);
           store.setBeats([]);
           store.setBeatColumns([]);
+          useAssetStore.getState().setAssets([]);
           store.setPageLayout({ ...DEFAULT_PAGE_LAYOUT });
           // Pacing and genres; a script without them opens as Standard.
           store.setScriptProfile(normalizeScriptProfile((content as Record<string, unknown> | null | undefined)?._scriptProfile));
@@ -3339,6 +3341,7 @@ const ScreenplayEditor: React.FC = () => {
         store.setTagCategories([...DEFAULT_TAG_CATEGORIES]);
         store.setBeats([]);
         store.setBeatColumns([]);
+        useAssetStore.getState().setAssets([]);
         store.setPageLayout({ ...DEFAULT_PAGE_LAYOUT });
         store.setScriptProfile(normalizeScriptProfile((content as Record<string, unknown> | null | undefined)?._scriptProfile));
         // Default per-doc grammar to off; the block below overrides

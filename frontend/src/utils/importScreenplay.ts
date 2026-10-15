@@ -22,6 +22,7 @@ import { hydrateEditorStoresFromContent } from './hydrateStores';
 import { captureFdxRaw, settingsSignature } from './fdxPreserve';
 import { restoreRevisionState } from './revisionState';
 import { useEditorStore, DEFAULT_TAG_CATEGORIES } from '../stores/editorStore';
+import { useAssetStore } from '../stores/assetStore';
 
 /** Every extension File ▸ Import, drag-and-drop and the OS can hand us. */
 export const SCREENPLAY_IMPORT_EXTENSIONS = [
@@ -106,6 +107,7 @@ export function resetStoresForImport(): void {
   store.setTags([]);
   store.setTagCategories([...DEFAULT_TAG_CATEGORIES]);
   store.setCharacterProfiles([]);
+  useAssetStore.getState().setAssets([]);
   store.setScenes([]);
   store.resetRevisionState();
   // Genre & pacing belong to the script being replaced, not the import.

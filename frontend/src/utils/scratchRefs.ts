@@ -63,6 +63,24 @@ export function collectScratchIds(content: unknown): Set<string> {
   walkNodes(content, (attrs) => {
     if (typeof attrs.scratchId === 'string' && attrs.scratchId) out.add(attrs.scratchId);
   });
+  // A script's asset list and its character photos live in the same store but
+  // are not document nodes, so the walk above never sees them.
+  if (content && typeof content === 'object') {
+    const c = content as Record<string, unknown>;
+    if (Array.isArray(c._assets)) {
+      for (const a of c._assets) {
+        const id = (a as { id?: unknown } | null)?.id;
+        if (typeof id === 'string' && id) out.add(id);
+      }
+    }
+    if (Array.isArray(c._characterProfiles)) {
+      for (const p of c._characterProfiles) {
+        const imgs = (p as { images?: unknown } | null)?.images;
+        if (!Array.isArray(imgs)) continue;
+        for (const i of imgs) if (typeof i === 'string' && i) out.add(i);
+      }
+    }
+  }
   return out;
 }
 
