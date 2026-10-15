@@ -1,199 +1,135 @@
-import React, { useEffect, useState, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
-import type { JSONContent } from '@tiptap/react';
+import React, { useState, useCallback, useMemo } from 'react';
+import type { Editor, JSONContent } from '@tiptap/react';
 import { useProjectStore } from '../stores/projectStore';
-import { api } from '../services/api';
-import type { VersionInfo } from '../services/api';
+import { useVersionStore } from '../stores/versionStore';
+import { useEditorStore } from '../stores/editorStore';
+import {
+  createStoredVersion, readStoredVersion, summariesNewestFirst, diffDocs,
+} from '../services/scriptVersions';
+import type { VersionSummary } from '../services/scriptVersions';
 import DiffViewer from './DiffViewer';
 import ScriptDiffView from './ScriptDiffView';
 import { showToast } from './Toast';
 import { relativeTime } from '../utils/relativeTime';
 
+interface VersionHistoryProps {
+  editor: Editor | null;
+}
 
-const VersionHistory: React.FC = () => {
-  const navigate = useNavigate();
-  const { currentProject, currentScriptId, versions, setVersions, versionHistoryOpen, setVersionHistoryOpen, triggerScriptReload } =
-    useProjectStore();
+async function readById(id: string): Promise<unknown> {
+  const stored = useVersionStore.getState().versions.find((v) => v.id === id);
+  if (!stored) throw new Error('That version is no longer in this script.');
+  return readStoredVersion(stored);
+}
 
-  const [selectedVersion, setSelectedVersion] = useState<VersionInfo | null>(null);
+/**
+ * The check-ins of the open script. They live in the script itself, so this
+ * needs no project: the list, the changes in each one, a compare of any two,
+ * a compare against the current text, and restoring one.
+ */
+const VersionHistory: React.FC<VersionHistoryProps> = ({ editor }) => {
+  const { versionHistoryOpen, setVersionHistoryOpen } = useProjectStore();
+  const stored = useVersionStore((s) => s.versions);
+  const versions = useMemo(() => summariesNewestFirst(stored), [stored]);
+
+  const [selectedVersion, setSelectedVersion] = useState<VersionSummary | null>(null);
   const [diffText, setDiffText] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
-  // Compare mode — checkboxes on version rows
-  const [compareSelection, setCompareSelection] = useState<string[]>([]);  // commit hashes
+  // Compare mode: checkboxes on version rows
+  const [compareSelection, setCompareSelection] = useState<string[]>([]);
   const [scriptDiff, setScriptDiff] = useState<{
-    docA: Record<string, unknown>;
-    docB: Record<string, unknown>;
+    docA: JSONContent;
+    docB: JSONContent;
     labelA: string;
     labelB: string;
   } | null>(null);
+  const [restoreConfirm, setRestoreConfirm] = useState<VersionSummary | null>(null);
 
   const toggleCompareSelect = useCallback((hash: string) => {
     setCompareSelection((prev) => {
       if (prev.includes(hash)) return prev.filter((h) => h !== hash);
-      if (prev.length >= 2) return [prev[1], hash]; // drop oldest, keep rolling window of 2
+      if (prev.length >= 2) return [prev[1], hash]; // keep a rolling window of two
       return [...prev, hash];
     });
   }, []);
 
   const runScriptCompare = useCallback(async () => {
-    if (!currentProject || !currentScriptId || compareSelection.length !== 2) return;
+    if (compareSelection.length !== 2) return;
+    const vA = versions.find((v) => v.hash === compareSelection[0]);
+    const vB = versions.find((v) => v.hash === compareSelection[1]);
+    if (!vA || !vB) {
+      showToast('Selected versions no longer available', 'error');
+      return;
+    }
+    // Order: earlier version = A, later = B
+    const aIsEarlier = new Date(vA.date).getTime() < new Date(vB.date).getTime();
+    const earlier = aIsEarlier ? vA : vB;
+    const later = aIsEarlier ? vB : vA;
     try {
-      const vA = versions.find((v) => v.hash === compareSelection[0]);
-      const vB = versions.find((v) => v.hash === compareSelection[1]);
-      if (!vA || !vB) {
-        showToast('Selected versions no longer available', 'error');
-        return;
-      }
-      // Order: earlier version = A, later = B
-      const aIsEarlier = new Date(vA.date).getTime() < new Date(vB.date).getTime();
-      const earlier = aIsEarlier ? vA : vB;
-      const later = aIsEarlier ? vB : vA;
-
-      // Fetch each version independently so a 404 on one side shows as an
-      // "Added in this version" / "Removed before this version" state rather
-      // than killing the whole compare.
-      const fetchOrNull = async (hash: string) => {
-        try {
-          return await api.getScriptAtVersion(currentProject.id, hash, currentScriptId);
-        } catch (e) {
-          const msg = e instanceof Error ? e.message : String(e);
-          if (msg.includes('404') || /not found/i.test(msg)) return null;
-          throw e;
-        }
-      };
-
-      const [respA, respB] = await Promise.all([
-        fetchOrNull(earlier.hash),
-        fetchOrNull(later.hash),
-      ]);
-
-      if (!respA && !respB) {
-        showToast(
-          `This script does not exist in either selected version.`,
-          'error',
-        );
-        return;
-      }
-      if (!respA) {
-        showToast(
-          `Script was added in ${later.short_hash}. It does not exist in ${earlier.short_hash}.`,
-          'info',
-        );
-      }
-      if (!respB) {
-        showToast(
-          `Script was removed before ${later.short_hash}. Showing only ${earlier.short_hash}.`,
-          'info',
-        );
-      }
-
-      const emptyDoc = { type: 'doc', content: [] };
+      const [docA, docB] = await Promise.all([readById(earlier.hash), readById(later.hash)]);
       setScriptDiff({
-        docA: (respA?.content || emptyDoc) as Record<string, unknown>,
-        docB: (respB?.content || emptyDoc) as Record<string, unknown>,
-        labelA: respA
-          ? `${earlier.short_hash} · ${earlier.message}`
-          : `${earlier.short_hash} · (script not in this version)`,
-        labelB: respB
-          ? `${later.short_hash} · ${later.message}`
-          : `${later.short_hash} · (script not in this version)`,
+        docA: docA as JSONContent,
+        docB: docB as JSONContent,
+        labelA: `${earlier.short_hash} · ${earlier.message}`,
+        labelB: `${later.short_hash} · ${later.message}`,
       });
     } catch (err) {
-      showToast(
-        err instanceof Error ? err.message : 'Failed to load versions for comparison',
-        'error',
-      );
+      showToast(err instanceof Error ? err.message : 'Failed to load versions for comparison', 'error');
     }
-  }, [currentProject, currentScriptId, compareSelection, versions]);
+  }, [compareSelection, versions]);
 
-  // Load versions when panel opens
-  const loadVersions = useCallback(async () => {
-    if (!currentProject) return;
-    setLoading(true);
-    setError(null);
+  const compareToCurrent = useCallback(async (v: VersionSummary) => {
+    if (!editor) return;
     try {
-      const data = await api.getVersions(currentProject.id, currentScriptId || undefined);
-      setVersions(data);
+      const docA = await readById(v.hash);
+      setScriptDiff({
+        docA: docA as JSONContent,
+        docB: editor.getJSON(),
+        labelA: `${v.short_hash} · ${v.message}`,
+        labelB: 'Current script',
+      });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load versions');
-    } finally {
-      setLoading(false);
+      showToast(err instanceof Error ? err.message : 'Failed to load the version', 'error');
     }
-  }, [currentProject, currentScriptId, setVersions]);
-
-  useEffect(() => {
-    if (versionHistoryOpen && currentProject) {
-      loadVersions();
-    }
-  }, [versionHistoryOpen, currentProject, loadVersions]);
+  }, [editor]);
 
   const handleViewDiff = useCallback(
-    async (version: VersionInfo, index: number) => {
-      if (!currentProject) return;
+    async (version: VersionSummary, index: number) => {
       setSelectedVersion(version);
-
-      // Diff against previous commit (or show first commit as-is)
-      if (index >= versions.length - 1) {
-        setDiffText('(Initial version -- no previous version to compare against)');
+      // Versions are newest-first, so the one after this is the one before it in time.
+      const prevVersion = versions[index + 1];
+      if (!prevVersion) {
+        setDiffText('(Initial version, no previous version to compare against)');
         return;
       }
-
-      const prevVersion = versions[index + 1]; // versions are newest-first
       try {
-        const result = await api.getVersionDiff(currentProject.id, prevVersion.hash, version.hash);
-        setDiffText(result.diff || '(No changes)');
+        const [before, after] = await Promise.all([readById(prevVersion.hash), readById(version.hash)]);
+        setDiffText(diffDocs(before, after));
       } catch (err) {
         setDiffText(`Error loading diff: ${err instanceof Error ? err.message : 'unknown error'}`);
       }
     },
-    [currentProject, versions]
+    [versions],
   );
 
-  const [restoreConfirm, setRestoreConfirm] = useState<VersionInfo | null>(null);
-
-  const handleRestore = useCallback(
-    (version: VersionInfo) => {
-      setRestoreConfirm(version);
-    },
-    []
-  );
-
-  const handleRestoreConfirm = useCallback(
-    async () => {
-      if (!currentProject || !restoreConfirm) return;
-      const version = restoreConfirm;
-      setRestoreConfirm(null);
-      try {
-        await api.restoreVersion(currentProject.id, version.hash);
-        await loadVersions();
-        setSelectedVersion(null);
-        setDiffText(null);
-
-        // Check if the current script still exists after restore
-        if (currentScriptId) {
-          try {
-            await api.getScript(currentProject.id, currentScriptId);
-            // Script still exists — reload it in the editor
-            triggerScriptReload();
-          } catch {
-            // Script was removed by the restore — go to project view
-            setVersionHistoryOpen(false);
-            navigate(`/project/${currentProject.id}`, { replace: true });
-            showToast(`Restored to version ${version.short_hash}. The open script no longer exists in this version.`, 'info');
-            return;
-          }
-        } else {
-          triggerScriptReload();
-        }
-        showToast(`Restored to version ${version.short_hash}`, 'success');
-      } catch (err) {
-        showToast(`Restore failed: ${err instanceof Error ? err.message : 'unknown error'}`, 'error');
-      }
-    },
-    [currentProject, currentScriptId, restoreConfirm, loadVersions, navigate, setVersionHistoryOpen, triggerScriptReload]
-  );
+  const handleRestoreConfirm = useCallback(async () => {
+    const target = restoreConfirm;
+    setRestoreConfirm(null);
+    if (!target || !editor) return;
+    try {
+      const doc = await readById(target.hash);
+      // The current text is kept first, so a restore can always be undone.
+      const safety = await createStoredVersion(editor.getJSON(), `Before restoring ${target.short_hash}`);
+      useVersionStore.getState().addVersion(safety);
+      editor.commands.setContent(doc as JSONContent);
+      useEditorStore.getState().setSaveStatus('unsaved');
+      setSelectedVersion(null);
+      setDiffText(null);
+      showToast(`Restored to version ${target.short_hash}`, 'success');
+    } catch (err) {
+      showToast(`Restore failed: ${err instanceof Error ? err.message : 'unknown error'}`, 'error');
+    }
+  }, [editor, restoreConfirm]);
 
   if (!versionHistoryOpen) return null;
 
@@ -213,17 +149,7 @@ const VersionHistory: React.FC = () => {
         </button>
       </div>
 
-      {!currentProject && (
-        <div className="version-history-empty">
-          No project selected. Import or create a screenplay first.
-        </div>
-      )}
-
-      {error && <div className="version-history-error">{error}</div>}
-
-      {loading && <div className="version-history-loading">Loading versions...</div>}
-
-      {currentScriptId && versions.length >= 2 && (
+      {versions.length >= 2 && (
         <div className="version-compare-bar">
           <span className="version-compare-info">
             {compareSelection.length === 0 && 'Check two versions to compare'}
@@ -250,9 +176,9 @@ const VersionHistory: React.FC = () => {
 
       <div className="version-history-content">
         <div className="version-history-list">
-          {versions.length === 0 && !loading && currentProject && (
+          {versions.length === 0 && (
             <div className="version-history-empty">
-              No versions yet. Use File &gt; Check In to save a version.
+              No versions yet. Use File &gt; Versions &gt; Check In to save a version.
             </div>
           )}
           {versions.map((v, i) => (
@@ -262,49 +188,34 @@ const VersionHistory: React.FC = () => {
               onClick={() => handleViewDiff(v, i)}
             >
               <div className="version-item-top">
-                {currentScriptId && (
-                  <input
-                    type="checkbox"
-                    className="version-compare-checkbox"
-                    checked={compareSelection.includes(v.hash)}
-                    onChange={(e) => { e.stopPropagation(); toggleCompareSelect(v.hash); }}
-                    onClick={(e) => e.stopPropagation()}
-                    title="Select for compare"
-                  />
-                )}
+                <input
+                  type="checkbox"
+                  className="version-compare-checkbox"
+                  checked={compareSelection.includes(v.hash)}
+                  onChange={(e) => { e.stopPropagation(); toggleCompareSelect(v.hash); }}
+                  onClick={(e) => e.stopPropagation()}
+                  title="Select for compare"
+                />
                 <span className="version-hash">{v.short_hash}</span>
                 <span className="version-date">{relativeTime(v.date)}</span>
               </div>
               <div className="version-message">{v.message}</div>
               <div className="version-item-actions">
-                {currentScriptId && (
-                  <button
-                    className="version-view-btn"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (currentProject && currentScriptId) {
-                        setVersionHistoryOpen(false);
-                        setSelectedVersion(null);
-                        setDiffText(null);
-                        // Record where read-only history mode was entered from
-                        // so its "Back to Current Version" can unwind rather
-                        // than push another editor entry (issue #66).
-                        navigate(
-                          `/project/${currentProject.id}/history/${currentScriptId}/${v.hash}`,
-                          { state: { from: `/project/${currentProject.id}/edit/${currentScriptId}` } },
-                        );
-                      }
-                    }}
-                    title="View this version in the editor (read-only)"
-                  >
-                    View
-                  </button>
-                )}
+                <button
+                  className="version-view-btn"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void compareToCurrent(v);
+                  }}
+                  title="Show what has changed since this version"
+                >
+                  Compare to Current
+                </button>
                 <button
                   className="version-restore-btn"
                   onClick={(e) => {
                     e.stopPropagation();
-                    handleRestore(v);
+                    setRestoreConfirm(v);
                   }}
                   title="Restore this version"
                 >
@@ -338,8 +249,8 @@ const VersionHistory: React.FC = () => {
       {scriptDiff && (
         <div className="script-diff-overlay">
           <ScriptDiffView
-            docA={scriptDiff.docA as JSONContent}
-            docB={scriptDiff.docB as JSONContent}
+            docA={scriptDiff.docA}
+            docB={scriptDiff.docB}
             labelA={scriptDiff.labelA}
             labelB={scriptDiff.labelB}
             onClose={() => setScriptDiff(null)}
@@ -352,8 +263,9 @@ const VersionHistory: React.FC = () => {
             <div className="dialog-header">Restore Version</div>
             <div className="dialog-body">
               <p style={{ margin: 0 }}>
-                Restore to version <strong>{restoreConfirm.short_hash}</strong>?
-                This will create a new version with the restored content.
+                Restore the script text to version <strong>{restoreConfirm.short_hash}</strong>?
+                Your current text is checked in first as "Before restoring {restoreConfirm.short_hash}",
+                so nothing is lost. Notes, beats and the other panels are not changed.
               </p>
             </div>
             <div className="dialog-actions">

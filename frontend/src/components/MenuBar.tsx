@@ -1,3 +1,4 @@
+import { createStoredVersion, readStoredVersion, toVersionSummary } from '../services/scriptVersions';
 import { useVersionStore } from '../stores/versionStore';
 import { writeaOnlyContent } from '../utils/writeaOnly';
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
@@ -8,7 +9,6 @@ import { useEditorStore, DEFAULT_PAGE_LAYOUT, printedPageNumber, resolveHeaderFo
 import type { DocumentOrigin } from '../stores/editorStore';
 import { useProjectStore } from '../stores/projectStore';
 import { useAssetStore } from '../stores/assetStore';
-import { api } from '../services/api';
 import { requestHandwriting } from '../utils/handwriting';
 import { requestElementMenu } from '../utils/elementMenu';
 import { isInAvRow, isInAvCell, avCellSideAt, avRowContext, readColumnConfig, avColumnDataCount, avBlockAtSelection, AV_DEFAULT_COLUMNS, AV_ASPECT_RATIOS, AV_BLANK_FRAME } from '../editor/extensions/AvBlock';
@@ -1120,38 +1120,25 @@ const MenuBar: React.FC<MenuBarProps> = ({
   const checkinInputRef = useRef<HTMLInputElement>(null);
 
   const handleCheckinOpen = useCallback(() => {
-    if (!currentProject) {
-      showToast('No project active. Save your file first.', 'error');
-      return;
-    }
     setCheckinMessage('');
     setCheckinOpen(true);
     setTimeout(() => checkinInputRef.current?.focus(), 100);
-  }, [currentProject]);
+  }, []);
 
   const handleCheckinSubmit = useCallback(async () => {
-    if (!currentProject || !checkinMessage.trim()) return;
+    if (!editor || !checkinMessage.trim()) return;
     setCheckinSaving(true);
-    // Save first so the latest content is on disk
-    if (editor && currentScriptId) {
-      try {
-        const content = buildSaveContent();
-        await api.saveScript(currentProject.id, currentScriptId, { content });
-      } catch (err) {
-        console.error('Auto-save before checkin failed:', err);
-        reportSaveError(err, 'manual-save');
-        // Don't proceed with the check-in if we couldn't persist the latest
-        // content — committing stale data would be worse than the failure.
-        setCheckinSaving(false);
-        return;
-      }
-    }
     try {
-      const result = await api.checkin(currentProject.id, checkinMessage.trim());
-      if (result.hash) {
-        showToast(`Version saved: ${result.short_hash}`, 'success');
+      // The script's text as it stands now. The file carries the check-in the
+      // next time it is saved.
+      const version = await createStoredVersion(editor.getJSON(), checkinMessage.trim());
+      useVersionStore.getState().addVersion(version);
+      useEditorStore.getState().setSaveStatus('unsaved');
+      const origin = useEditorStore.getState().documentOrigin;
+      if (origin?.format === 'fdx') {
+        showToast(`Version saved: ${toVersionSummary(version).short_hash}. Final Draft files cannot hold versions, so Save will keep this script as a .writea beside it.`, 'success');
       } else {
-        showToast(result.message || 'No changes to commit', 'success');
+        showToast(`Version saved: ${toVersionSummary(version).short_hash}`, 'success');
       }
     } catch (err) {
       showToast(`Check in failed: ${err instanceof Error ? err.message : 'unknown error'}`, 'error');
@@ -1159,7 +1146,7 @@ const MenuBar: React.FC<MenuBarProps> = ({
       setCheckinSaving(false);
       setCheckinOpen(false);
     }
-  }, [editor, currentProject, currentScriptId, checkinMessage, buildSaveContent]);
+  }, [editor, checkinMessage]);
 
   // ── Track Changes ──
   const clearTrackChanges = useCallback(() => {
@@ -1179,59 +1166,26 @@ const MenuBar: React.FC<MenuBarProps> = ({
       return;
     }
 
-    if (!currentProject || !currentScriptId) {
-      showToast('Save your script to a project first', 'error');
+    const versions = useVersionStore.getState().versions;
+    if (versions.length === 0) {
+      showToast('No versions yet. Use File > Check In first', 'info');
       return;
     }
 
+    const latest = versions[versions.length - 1];
     try {
-      const versions = await api.getVersions(currentProject.id);
-      if (versions.length === 0) {
-        showToast('No versions yet — use File > Check In first', 'info');
-        return;
-      }
-
-      const latest = versions[0];
-      let scriptResp;
-      try {
-        scriptResp = await api.getScriptAtVersion(
-          currentProject.id,
-          latest.hash,
-          currentScriptId,
-        );
-      } catch (innerErr) {
-        // Script didn't exist at the last check-in (created after the last commit)
-        const msg = innerErr instanceof Error ? innerErr.message : '';
-        if (msg.includes('404')) {
-          showToast('This script has no checked-in version yet — use File > Check In first', 'info');
-        } else {
-          showToast('Could not load the checked-in version. Try checking in first.', 'error');
-        }
-        return;
-      }
-
+      const baseline = await readStoredVersion(latest);
       setTrackChangesEnabled(true);
-      setTrackChangesLabel(latest.short_hash);
-
+      setTrackChangesLabel(toVersionSummary(latest).short_hash);
       if (editor) {
         const { tr } = editor.state;
-        tr.setMeta(trackChangesPluginKey, {
-          enabled: true,
-          baseline: scriptResp.content,
-        });
+        tr.setMeta(trackChangesPluginKey, { enabled: true, baseline });
         editor.view.dispatch(tr);
       }
-    } catch (err) {
-      showToast('Could not load version history. Make sure the backend is running.', 'error');
+    } catch {
+      showToast('Could not open the last check-in.', 'error');
     }
-  }, [
-    editor,
-    currentProject,
-    currentScriptId,
-    trackChangesEnabled,
-    setTrackChangesEnabled,
-    setTrackChangesLabel,
-  ]);
+  }, [editor, trackChangesEnabled, clearTrackChanges, setTrackChangesEnabled, setTrackChangesLabel]);
 
   const dropdownRef = useRef<HTMLDivElement | null>(null);
 

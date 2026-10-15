@@ -177,7 +177,8 @@ import { isTauri, isDesktopTauri, needsSelectionHandles } from '../services/plat
 import { reportSaveError } from '../stores/saveErrorStore';
 import { pluginRegistry } from '../plugins/registry';
 import { createTrackChangesPlugin, trackChangesPluginKey } from '../editor/trackChanges';
-import type { VersionInfo } from '../services/api';
+import { readStoredVersion } from '../services/scriptVersions';
+import type { VersionSummary } from '../services/scriptVersions';
 
 /**
  * Bring a linked script's library copy and its file on disk into agreement
@@ -4029,33 +4030,26 @@ const ScreenplayEditor: React.FC = () => {
 
   // ── Compare with Version picker callback ──
   const handleCompareVersionSelect = useCallback(
-    async (version: VersionInfo) => {
-      if (!editor || !currentProject || !currentScriptId) return;
+    async (version: VersionSummary) => {
+      if (!editor) return;
       setCompareVersionOpen(false);
       try {
-        const scriptResp = await api.getScriptAtVersion(
-          currentProject.id,
-          version.hash,
-          currentScriptId,
-        );
+        const stored = useVersionStore.getState().versions.find((v) => v.id === version.hash);
+        if (!stored) {
+          showToast('That version is no longer in this script', 'info');
+          return;
+        }
+        const baseline = await readStoredVersion(stored);
         setTrackChangesEnabled(true);
         setTrackChangesLabel(version.short_hash);
         const { tr } = editor.state;
-        tr.setMeta(trackChangesPluginKey, {
-          enabled: true,
-          baseline: scriptResp.content,
-        });
+        tr.setMeta(trackChangesPluginKey, { enabled: true, baseline });
         editor.view.dispatch(tr);
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : '';
-        if (msg.includes('404')) {
-          showToast('This script did not exist in that version', 'info');
-        } else {
-          showToast('Failed to load version for comparison', 'error');
-        }
+      } catch {
+        showToast('Failed to load version for comparison', 'error');
       }
     },
-    [editor, currentProject, currentScriptId, setCompareVersionOpen, setTrackChangesEnabled, setTrackChangesLabel],
+    [editor, setCompareVersionOpen, setTrackChangesEnabled, setTrackChangesLabel],
   );
 
   const handleCharAutoSelect = useCallback((name: string) => {
@@ -4725,7 +4719,7 @@ const ScreenplayEditor: React.FC = () => {
       {!isHistoryMode && grammarRulesPanelOpen && (
         <GrammarRulesPanel onClose={() => setGrammarRulesPanelOpen(false)} />
       )}
-      {!isHistoryMode && <VersionHistory />}
+      {!isHistoryMode && <VersionHistory editor={editor} />}
       {!isHistoryMode && <AssetManager />}
       {!isHistoryMode && openFileOpen && (
         <OpenFile

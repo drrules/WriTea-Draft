@@ -1,55 +1,21 @@
-import React, { useEffect, useState, useCallback } from 'react';
-import { useProjectStore } from '../stores/projectStore';
-import { api } from '../services/api';
-import type { VersionInfo } from '../services/api';
-
-function relativeTime(dateStr: string): string {
-  const date = new Date(dateStr);
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffSec = Math.floor(diffMs / 1000);
-  const diffMin = Math.floor(diffSec / 60);
-  const diffHr = Math.floor(diffMin / 60);
-  const diffDay = Math.floor(diffHr / 24);
-
-  if (diffSec < 60) return 'just now';
-  if (diffMin < 60) return `${diffMin} minute${diffMin !== 1 ? 's' : ''} ago`;
-  if (diffHr < 24) return `${diffHr} hour${diffHr !== 1 ? 's' : ''} ago`;
-  if (diffDay < 30) return `${diffDay} day${diffDay !== 1 ? 's' : ''} ago`;
-  return date.toLocaleDateString();
-}
+import React, { useMemo } from 'react';
+import { useVersionStore } from '../stores/versionStore';
+import { summariesNewestFirst } from '../services/scriptVersions';
+import type { VersionSummary } from '../services/scriptVersions';
+import { relativeTime } from '../utils/relativeTime';
 
 interface CompareVersionPickerProps {
-  onSelect: (version: VersionInfo) => void;
+  onSelect: (version: VersionSummary) => void;
   onClose: () => void;
 }
 
+/** Pick one of this script's check-ins to compare the current text against. */
 const CompareVersionPicker: React.FC<CompareVersionPickerProps> = ({
   onSelect,
   onClose,
 }) => {
-  const { currentProject } = useProjectStore();
-  const [versions, setVersions] = useState<VersionInfo[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const loadVersions = useCallback(async () => {
-    if (!currentProject) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await api.getVersions(currentProject.id);
-      setVersions(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load versions');
-    } finally {
-      setLoading(false);
-    }
-  }, [currentProject]);
-
-  useEffect(() => {
-    loadVersions();
-  }, [loadVersions]);
+  const stored = useVersionStore((s) => s.versions);
+  const versions = useMemo(() => summariesNewestFirst(stored), [stored]);
 
   return (
     <div className="dialog-overlay" onClick={onClose}>
@@ -59,15 +25,9 @@ const CompareVersionPicker: React.FC<CompareVersionPickerProps> = ({
       >
         <div className="dialog-header">Compare with Version</div>
         <div className="dialog-body">
-          {!currentProject && (
-            <p className="compare-version-empty">No project selected.</p>
-          )}
-          {error && <p className="compare-version-error">{error}</p>}
-          {loading && <p className="compare-version-loading">Loading versions...</p>}
-
-          {!loading && versions.length === 0 && currentProject && (
+          {versions.length === 0 && (
             <p className="compare-version-empty">
-              No versions yet. Use File &gt; Check In to save a version.
+              No versions yet. Use File &gt; Versions &gt; Check In to save a version.
             </p>
           )}
 
