@@ -1,8 +1,6 @@
 import type { JSONContent } from '@tiptap/react';
 import React, { useMemo } from 'react';
 import { useEditorStore, ELEMENT_LABELS, type BuiltInElementType } from '../stores/editorStore';
-import { useProjectStore } from '../stores/projectStore';
-import { useLinkedFileStore } from '../stores/linkedFileStore';
 import { useFormattingTemplateStore } from '../stores/formattingTemplateStore';
 import { activeTimingOptions, computeSceneTiming, formatRuntime } from '../utils/scriptTiming';
 import { computeScriptStructure } from '../utils/scriptStructure';
@@ -41,25 +39,6 @@ const StatusBar: React.FC<StatusBarProps> = ({ editorDoc = null }) => {
   // will be asked for by the production.
   const currentLabel = pageLabels?.[currentPage - 1];
 
-  const { currentProject, currentScriptId } = useProjectStore();
-  // The file on disk a library script also saves to (issue #135), and whether
-  // the last save reached it.
-  const openScriptFile = useLinkedFileStore((s) => s.openScriptFile);
-  const linkedStatus = useLinkedFileStore((s) => (currentScriptId ? s.byScript[currentScriptId] : undefined));
-  const linkedPath = openScriptFile && openScriptFile.scriptId === currentScriptId
-    ? (linkedStatus?.path || openScriptFile.path)
-    : null;
-  const linkedName = linkedPath ? linkedPath.split(/[/\\]/).pop() || linkedPath : '';
-  const linkedProblem =
-    linkedStatus?.state === 'pending' && linkedStatus.error ? 'not saved to file'
-    : linkedStatus?.state === 'missing' ? 'file not found'
-    : linkedStatus?.state === 'conflict' ? 'changed outside WriTea Draft'
-    : '';
-  const retryLinkedFile = () => {
-    void import('../services/linkedFiles')
-      .then((lf) => lf.retryPendingWrites())
-      .catch((err) => console.error('[linked-files] retry failed:', err));
-  };
   const getActiveTemplate = useFormattingTemplateStore((s) => s.getActiveTemplate);
   const activeTemplateId = useFormattingTemplateStore((s) => s.activeTemplateId);
 
@@ -106,10 +85,6 @@ const StatusBar: React.FC<StatusBarProps> = ({ editorDoc = null }) => {
   return (
     <div className="status-bar">
       <div className="status-left">
-        {currentProject && (
-          <span className="status-item status-project">{currentProject.name}</span>
-        )}
-        {currentProject && <span className="status-sep">/</span>}
         <span className="status-item">{documentTitle}</span>
         {/* Save overwrites this file rather than the library, so say which one
             — a writer editing a Dropbox screenplay needs to know that before
@@ -122,21 +97,6 @@ const StatusBar: React.FC<StatusBarProps> = ({ editorDoc = null }) => {
               title={`Save writes back to ${documentOrigin.name}`}
             >
               {documentOrigin.name}
-            </span>
-          </>
-        )}
-        {linkedPath && (
-          <>
-            <span className="status-sep">&middot;</span>
-            <span
-              className={`status-item status-origin${linkedProblem ? ' status-save-error' : ''}`}
-              title={linkedProblem
-                ? `${linkedPath}\n${linkedStatus?.error || linkedProblem}${linkedStatus?.state === 'pending' ? '\nClick to try again.' : ''}`
-                : `Every save also writes ${linkedPath}`}
-              onClick={linkedStatus?.state === 'pending' ? retryLinkedFile : undefined}
-              style={linkedStatus?.state === 'pending' ? { cursor: 'pointer' } : undefined}
-            >
-              {linkedName}{linkedProblem ? ` — ${linkedProblem}` : ''}
             </span>
           </>
         )}
