@@ -51,7 +51,7 @@ import { createContdCasePlugin } from '../editor/contdCase';
 import { ScreenplayImage } from '../editor/extensions/ScreenplayImage';
 import { buildImageAttrs, insertImageNode, warnIfImageDegraded } from '../utils/insertImage';
 import { demoteDataUrlsToScratch, promoteScratchImages } from '../services/promoteScratchAssets';
-import { docHasInlineImageBytes, docHasScratchImages } from '../utils/scratchRefs';
+import { docHasInlineImageBytes } from '../utils/scratchRefs';
 import { setLiveScratchDocSource } from '../services/scratchSweep';
 
 import { useEditorStore, DEFAULT_PAGE_LAYOUT, DEFAULT_TAG_CATEGORIES, resolveMoresContds, resolveHeaderFooter, printedPageNumber, savedProfileFields, type SceneInfo } from '../stores/editorStore';
@@ -1955,7 +1955,6 @@ const ScreenplayEditor: React.FC = () => {
   const autoSaveLibrary = useSettingsStore((s) => s.autoSaveLibrary);
   const openScriptFile = useLinkedFileStore((s) => s.openScriptFile);
   const scriptIsLinked = Boolean(openScriptFile && openScriptFile.scriptId === currentScriptId);
-  const autoSaveIntervalSeconds = useSettingsStore((s) => s.autoSaveIntervalSeconds);
   const lastSavedJsonRef = useRef<string>('');
   // Tracks whether the script currently in the editor has real (textful) content
   // saved. When true, an auto-save that finds the editor body suddenly empty is
@@ -1967,7 +1966,7 @@ const ScreenplayEditor: React.FC = () => {
   // it has content. Starting at `false` left that window unguarded — the only
   // thing that stopped the blank body being written was the storage-layer guard
   // throwing, which surfaced as a save-error modal.
-  const lastSavedNonEmptyRef = useRef<boolean>(Boolean(currentProject && currentScriptId));
+  const lastSavedNonEmptyRef = useRef<boolean>(false);
 
   // Guard: suppress auto-save while switching scripts.  During the switch the
   // store metadata is cleared (0 relationships, 0 profiles, etc.) but the
@@ -1987,9 +1986,9 @@ const ScreenplayEditor: React.FC = () => {
   useBackupScheduler({
     buildSaveContent,
     documentTitle: backupDocumentTitle,
-    projectId: currentProject?.id ?? null,
-    scriptId: currentScriptId,
-    projectTitle: currentProject?.name,
+    projectId: null,
+    scriptId: null,
+    projectTitle: undefined,
     scriptSwitchingRef,
     isCollabGuest,
     isHistoryMode,
@@ -2061,8 +2060,8 @@ const ScreenplayEditor: React.FC = () => {
     openAnyway: openDuplicateAnyway,
     dismiss: dismissOpenElsewhere,
   } = useOpenDocumentGuard({
-    projectId: currentProject?.id ?? null,
-    scriptId: currentScriptId,
+    projectId: null,
+    scriptId: null,
     originPath: documentOriginPath,
     documentTitle: backupDocumentTitle,
     ready: !!editor && !isHistoryMode,
@@ -2106,8 +2105,6 @@ const ScreenplayEditor: React.FC = () => {
     if (wasPreflight) return;
 
     navigate('/', { replace: true });
-    setCurrentProject(null);
-    setCurrentScriptId(null);
     useEditorStore.getState().setImportedSource(null);
     setDocumentTitle('Untitled Screenplay');
     if (editor) {
@@ -2124,28 +2121,19 @@ const ScreenplayEditor: React.FC = () => {
     dismissOpenElsewhere,
     editor,
     navigate,
-    setCurrentProject,
-    setCurrentScriptId,
     setDocumentTitle,
   ]);
 
   /**
    * Put a recovered session back into the editor.
    *
-   * Mirrors the import path rather than the script-load path: the snapshot is
-   * content, not a stored script, so it is applied to the editor and left for
-   * the user to save. When it came from a *different* document than the one
-   * open, the project/script association is dropped as well, so saving cannot
-   * write one screenplay's recovered text over another's stored copy — the
-   * dialog says as much before the user commits.
+   * Mirrors the import path: the snapshot is content, not a stored script, so
+   * it is applied to the editor and left for the user to save.
    */
   const handleRecoveryRestore = useCallback((snapshot: RecoverySnapshot) => {
     if (!editor || editor.isDestroyed) return;
 
     const { pmDoc } = stripSaveMetadata(snapshot.content);
-    const sameDocument =
-      snapshot.projectId === (currentProject?.id ?? null) &&
-      snapshot.scriptId === currentScriptId;
 
     editor.commands.setContent(pmDoc, true);
     clearEditorHistory(editor);
@@ -2165,11 +2153,6 @@ const ScreenplayEditor: React.FC = () => {
     // it stops Save from writing recovered text over an unrelated document.
     useEditorStore.getState().setImportedSource(null);
 
-    if (!sameDocument) {
-      setCurrentProject(null);
-      setCurrentScriptId(null);
-    }
-
     // The restored body is unsaved by definition — clear the auto-save
     // comparison so the next tick writes it rather than deciding nothing
     // changed against whatever was loaded before.
@@ -2184,7 +2167,7 @@ const ScreenplayEditor: React.FC = () => {
     // restored document is protected again rather than staying over the size
     // limit until the writer happens to save it somewhere.
     if (docHasInlineImageBytes(snapshot.content)) void demoteDataUrlsToScratch(editor);
-  }, [editor, currentProject, currentScriptId, setDocumentTitle, setCurrentProject, setCurrentScriptId, setActiveElement]);
+  }, [editor, setDocumentTitle, setActiveElement]);
 
   // Crash-recovery copy. Unlike the two above it covers every platform and
   // every document, including one that was never saved to the library — which
@@ -2192,8 +2175,8 @@ const ScreenplayEditor: React.FC = () => {
   useRecoverySnapshot({
     buildSaveContent,
     documentTitle: backupDocumentTitle,
-    projectId: currentProject?.id ?? null,
-    scriptId: currentScriptId,
+    projectId: null,
+    scriptId: null,
     editor,
     lastSavedJsonRef,
     scriptSwitchingRef,
@@ -2203,40 +2186,6 @@ const ScreenplayEditor: React.FC = () => {
     hasEdits: () => (editor ? hasEditsSinceLoad(editor) : false),
   });
 
-  useEffect(() => {
-    if (!editor || !currentProject || !currentScriptId || isCollabGuest || !autoSaveLibrary) return;
-    const { setSaveStatus } = useEditorStore.getState();
-    const timer = setInterval(() => {
-      if (scriptSwitchingRef.current) return;
-      const content = buildSaveContent();
-      if (!content) return;
-      // Data-loss guard: never let an empty/just-reset editor body overwrite a
-      // script that has real content saved (the blank-document bug).
-      if (!docHasAnyText(content) && lastSavedNonEmptyRef.current) {
-        console.warn('Auto-save skipped: editor body is empty but saved content is not (likely editor reset).');
-        return;
-      }
-      const json = JSON.stringify(content);
-      if (json !== lastSavedJsonRef.current) {
-        lastSavedJsonRef.current = json;
-        lastSavedNonEmptyRef.current = docHasAnyText(content);
-        setSaveStatus('saving');
-        scriptApi.saveScript(currentProject.id, currentScriptId, { content }).then(() => {
-          setSaveStatus('saved');
-        }).catch((err) => {
-          console.error('Auto-save failed:', err);
-          const msg = err instanceof Error ? err.message : String(err);
-          setSaveStatus('error', msg);
-          // AuthGate / QuotaExceededDialog already showed a dialog for handled
-          // errors (401/402/403); reportSaveError skips them.  All other
-          // failures get a blocking modal the user must acknowledge.
-          reportSaveError(err, 'auto-save');
-        });
-      }
-    }, autoSaveIntervalSeconds * 1000);
-    return () => clearInterval(timer);
-  }, [editor, currentProject, currentScriptId, buildSaveContent, isCollabGuest, autoSaveLibrary, autoSaveIntervalSeconds]);
-
   // Let the scratch sweeper see the document on screen, so it never mistakes a
   // picture in the open screenplay for an orphan.
   useEffect(() => {
@@ -2245,42 +2194,12 @@ const ScreenplayEditor: React.FC = () => {
     return () => setLiveScratchDocSource(null);
   }, [editor]);
 
-  // --- Migrate images that predate the scratch store ---
-  // A script saved by an older build can hold its images as base64 inside the
-  // document, which is what used to push a screenplay past the recovery
-  // snapshot's size limit and silently cost it crash protection. Once, per
-  // document, move them into the project's assets; the resulting edit is picked
-  // up by the auto-save above, so the conversion is paid for exactly once
-  // rather than repeated on every open.
-  const migratedImagesForRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (!editor || !currentProject || !currentScriptId || isCollabGuest || isHistoryMode) return;
-    const key = `${currentProject.id}:${currentScriptId}`;
-    if (migratedImagesForRef.current === key) return;
-
-    const timer = setTimeout(() => {
-      if (scriptSwitchingRef.current || editor.isDestroyed) return;
-      const content = editor.getJSON();
-      if (!docHasInlineImageBytes(content) && !docHasScratchImages(content)) {
-        migratedImagesForRef.current = key;
-        return;
-      }
-      migratedImagesForRef.current = key;
-      void promoteScratchImages(
-        editor,
-        currentProject.id,
-        useProjectStore.getState().isCloudProject(currentProject.id) ? cloudApi : api,
-      );
-    }, 2000);
-    return () => clearTimeout(timer);
-  }, [editor, currentProject, currentScriptId, isCollabGuest, isHistoryMode]);
-
   // --- Track unsaved changes for status bar ---
   // A file opened in place needs this as much as a library script: it is what
   // the close prompt and the file auto-save both read. It used to be tracked
   // for library scripts only, so edits to an opened file never counted as
   // unsaved and closing the window dropped them without asking.
-  const hasSaveTarget = Boolean((currentProject && currentScriptId) || documentOriginPath);
+  const hasSaveTarget = Boolean(documentOriginPath);
   useEffect(() => {
     if (!editor || !hasSaveTarget || isCollabGuest) return;
     const markUnsaved = () => {
