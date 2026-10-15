@@ -25,7 +25,6 @@ import { exportFadeIn } from '../utils/osfExporter';
 import {
   serializeContentForFormat, extensionOfPath, linkedFileName,
 } from '../utils/linkedFileFormat';
-import { useLinkedFileStore, autoSaveAppliesToOpenDocument } from '../stores/linkedFileStore';
 import { exportPDF, renderPDF, type PDFExportOptions } from '../utils/pdfExporter';
 import { buildExportFootnotePlan } from '../utils/exportFootnotes';
 import { downloadDocx } from '../utils/docxExporter';
@@ -52,7 +51,6 @@ import { selectionStartsNewPage } from '../editor/extensions';
 import { pluginRegistry } from '../plugins/registry';
 import { useNavigate } from 'react-router-dom';
 import { flushPendingSave, setLeaveGuard, leaveEditor as leaveEditorScreen } from '../services/pendingSave';
-import { scriptApi } from '../services/scriptApi';
 import { useSettingsStore } from '../stores/settingsStore';
 import { clearEditorHistory } from '../editor/clearHistory';
 import { clearSessionDoc } from '../utils/sessionDoc';
@@ -103,7 +101,6 @@ import {
 } from '../utils/fileOps';
 import { isDesktopTauri, printRoute, supportsApplePencil, supportsMultipleWindows } from '../services/platform';
 import { getCompatEntries } from '../services/compat';
-import { reportSaveError } from '../stores/saveErrorStore';
 import type { MenuSection as PluginMenuSection } from '../plugins/registry';
 import {
   FaFile,
@@ -334,14 +331,7 @@ const MenuBar: React.FC<MenuBarProps> = ({
     pageLabels,
   } = useEditorStore();
 
-  const {
-    currentProject,
-    currentScriptId,
-    setCurrentProject,
-    setCurrentScriptId,
-    setScripts,
-    setVersionHistoryOpen,
-  } = useProjectStore();
+  const { setVersionHistoryOpen } = useProjectStore();
 
   // Build a saveable content object: editor JSON + store metadata at top level.
   // This used to be a hand-maintained copy of ScreenplayEditor's version and had
@@ -567,49 +557,16 @@ const MenuBar: React.FC<MenuBarProps> = ({
   const handleSave = useCallback(async () => {
     if (!editor) return;
 
-    // A document opened in place belongs to the user's file, not the library —
-    // Save means "update that file". Checked before the project branch so it
-    // works for a Dropbox screenplay that was never added to a project, which
-    // is the whole point of opening in place.
+    // A document with a file behind it: Save means "update that file".
     const origin = useEditorStore.getState().documentOrigin;
     if (origin) {
       await saveInPlace(origin, false);
       return;
     }
 
-    if (!currentProject || !currentScriptId) {
-      // No project yet — prompt user for project & file name
-      await saveToFileAsRef.current();
-      return;
-    }
-    const { setSaveStatus } = useEditorStore.getState();
-    setSaveStatus('saving');
-    try {
-      const content = buildSaveContent();
-      await scriptApi.saveScript(currentProject.id, currentScriptId, { content });
-      setSaveStatus('saved');
-      // A script linked to a file on disk is safe in the library either way,
-      // but the writer pressed Save expecting their file to have it too.
-      const fileStatus = useLinkedFileStore.getState().byScript[currentScriptId];
-      if (fileStatus?.state === 'pending' && fileStatus.error) {
-        const name = fileStatus.path.split(/[/\\]/).pop() || fileStatus.path;
-        showToast(`Saved in WriTea Draft, but not to ${name}: ${fileStatus.error}. WriTea Draft will keep trying.`, 'error');
-      }
-      // The user's real copy now holds this text, so there is nothing left to
-      // recover. Done here as well as in the snapshot hook because an explicit
-      // save goes through this path without touching the auto-save bookkeeping
-      // the hook compares against.
-      clearRecoverySnapshot();
-    } catch (err) {
-      console.error('Save failed:', err);
-      const msg = err instanceof Error ? err.message : String(err);
-      setSaveStatus('error', msg);
-      // AuthGate / QuotaExceededDialog already surfaced handled errors (401,
-      // 402, 403 unverified) — reportSaveError skips them.  Other failures
-      // get the blocking modal so the user can't miss them.
-      reportSaveError(err, 'manual-save');
-    }
-  }, [editor, currentProject, currentScriptId, buildSaveContent, setSaveAsOpen, saveInPlace]);
+    // Nothing saved yet: ask where it goes.
+    await saveToFileAsRef.current();
+  }, [editor, saveInPlace, setSaveAsOpen]);
 
   /**
    * Leave the editor for another screen of the app.
@@ -661,20 +618,7 @@ const MenuBar: React.FC<MenuBarProps> = ({
       const lf = await import('../services/linkedFiles');
       const { save } = await import('@tauri-apps/plugin-dialog');
       const origin = s.documentOrigin;
-      const ps = useProjectStore.getState();
-      if (!origin && currentProject && currentScriptId && ps.isCloudScript(currentProject.id, currentScriptId)) {
-        showToast('A cloud script cannot be linked to a file on this computer. Use File ▸ Export to save a copy.', 'error');
-        return false;
-      }
-      const library = !origin && currentProject && currentScriptId
-        ? { projectId: currentProject.id, scriptId: currentScriptId }
-        : null;
-
       let defaultDir: string | null = origin ? lf.dirnameOf(origin.bookmark) : null;
-      if (!defaultDir && library) {
-        const link = await lf.getLink(library.scriptId);
-        defaultDir = link ? lf.dirnameOf(link.path) : lf.projectFolder(currentProject);
-      }
       if (!defaultDir) {
         const { documentDir } = await import('@tauri-apps/api/path');
         defaultDir = await documentDir();
@@ -695,34 +639,6 @@ const MenuBar: React.FC<MenuBarProps> = ({
       const ext: 'fdx' | 'writea' = extensionOfPath(path).toLowerCase() === 'writea' ? 'writea' : 'fdx';
       if (extensionOfPath(path).toLowerCase() !== ext) path = `${path}.${ext}`;
       const name = lf.basenameOf(path);
-
-      // One file, one script: two scripts saving to one file would overwrite
-      // each other on every save.
-      const taken = await lf.findLinkByPath(path);
-      if (taken && taken.scriptId !== library?.scriptId) {
-        showToast(`${name} is already where another script is saved. Choose a different name.`, 'error');
-        return false;
-      }
-
-      if (library) {
-        const content = buildSaveContent();
-        if (!content) throw new Error('No document is open.');
-        s.setSaveStatus('saving');
-        // The library first, so the file gets exactly what is on screen.
-        await scriptApi.saveScript(library.projectId, library.scriptId, { content });
-        const outcome = await lf.linkScriptToFile(library.projectId, library.scriptId, path);
-        useLinkedFileStore.getState().setOpenScriptFile({ scriptId: library.scriptId, path });
-        s.setSaveStatus('saved');
-        onDocumentSaved?.(JSON.stringify(content));
-        clearRecoverySnapshot();
-        if (outcome === 'written') {
-          showToast(`Saved to ${name}. From now on, saving this script updates that file too.`, 'success');
-        } else {
-          const err = useLinkedFileStore.getState().byScript[library.scriptId]?.error;
-          showToast(`Linked to ${name}, but it could not be written yet${err ? `: ${err}` : ''}. WriTea Draft will keep trying.`, 'error');
-        }
-        return true;
-      }
 
       s.setSaveStatus('saving');
       await saveDocumentInPlace(path, await serializeForOrigin(ext));
@@ -749,7 +665,7 @@ const MenuBar: React.FC<MenuBarProps> = ({
       showToast(`Could not save to the file: ${msg}`, 'error');
       return false;
     }
-  }, [editor, currentProject, currentScriptId, buildSaveContent, serializeForOrigin, onDocumentSaved]);
+  }, [editor, buildSaveContent, serializeForOrigin, onDocumentSaved]);
   saveToFileAsRef.current = handleSaveToFileAs;
 
 
@@ -814,14 +730,10 @@ const MenuBar: React.FC<MenuBarProps> = ({
       const status = useEditorStore.getState().saveStatus;
       return status === 'unsaved' || status === 'saving' || status === 'error';
     }
-    if (currentProject && currentScriptId) {
-      const status = useEditorStore.getState().saveStatus;
-      return status === 'unsaved' || status === 'saving' || status === 'error';
-    }
     // Never-saved document — prompt only if there's real content
     const text = editor.state.doc.textContent.trim();
     return text.length > 0;
-  }, [editor, currentProject, currentScriptId]);
+  }, [editor]);
 
   const confirmOrRun = useCallback((action: () => void) => {
     if (editorHasUnsavedChanges()) {
@@ -843,19 +755,11 @@ const MenuBar: React.FC<MenuBarProps> = ({
       setPendingAction(null);
       return;
     }
-    if (!currentProject || !currentScriptId) {
-      // No project yet — open save-as dialog; the pending action will run
-      // after save-as completes (via postSaveAction in the store).
-      const next = pendingAction;
-      setPendingAction(null);
-      if (await saveToFileAsRef.current()) next?.();
-      return;
-    }
-    // Existing project — save inline, then run pending action
-    await handleSave();
-    pendingAction?.();
+    // Nothing saved yet: ask where it goes, and carry on only if it was saved.
+    const next = pendingAction;
     setPendingAction(null);
-  }, [handleSave, pendingAction, currentProject, currentScriptId, setSaveAsOpen, setPostSaveAction]);
+    if (await saveToFileAsRef.current()) next?.();
+  }, [handleSave, pendingAction, setSaveAsOpen, setPostSaveAction]);
 
   const handleDiscardConfirmDiscard = useCallback(() => {
     setDiscardConfirmOpen(false);
@@ -873,23 +777,14 @@ const MenuBar: React.FC<MenuBarProps> = ({
   }, []);
 
   // ── Leaving the editor for another screen ──
-  // With library auto-save on, outstanding work is flushed and the writer goes.
-  // With it off nothing may be written unasked (issue #135), and a library
-  // script is reloaded from the database on the way back, so they are asked —
-  // the same Save / Discard / Cancel as File → Open. Anything else open (a
-  // file from disk, an unsaved draft) is held in memory across the move by the
+  // Outstanding work is flushed and the writer goes. Whatever is open (a file
+  // from disk, an unsaved draft) is held in memory across the move by the
   // editor's session stash, so it needs no question.
   useEffect(() => {
     return setLeaveGuard((go) => {
-      const libraryScript =
-        Boolean(currentProject && currentScriptId) && !useEditorStore.getState().documentOrigin;
-      if (libraryScript && !autoSaveAppliesToOpenDocument(useSettingsStore.getState(), false) && editorHasUnsavedChanges()) {
-        confirmOrRun(go);
-        return;
-      }
       void flushPendingSave().then(go);
     });
-  }, [currentProject, currentScriptId, editorHasUnsavedChanges, confirmOrRun]);
+  }, []);
 
   // ── Auto-save for a file opened from disk ──
   // Opt-in (Settings → Saving): it rewrites the writer's own file unasked, and
@@ -1376,9 +1271,6 @@ const MenuBar: React.FC<MenuBarProps> = ({
 
       const scriptTitle = imported.title || opened.name.replace(/\.\w+$/, '') || 'Untitled';
       store.setDocumentTitle(scriptTitle);
-      setCurrentProject(null);
-      setCurrentScriptId(null);
-      setScripts([]);
       // Not setImportedSource: this is not a copy. Save writes back here.
       store.setImportedSource(null);
       store.setDocumentOrigin({ bookmark: opened.bookmark, name: opened.name, format: ext });
@@ -1398,7 +1290,7 @@ const MenuBar: React.FC<MenuBarProps> = ({
       console.error('Opening the document failed:', err);
       showToast(`Could not open the file: ${err instanceof Error ? err.message : String(err)}`, 'error');
     }
-  }, [editor, clearTrackChanges, setCurrentProject, setCurrentScriptId, setScripts]);
+  }, [editor, clearTrackChanges]);
 
   applyInPlaceRef.current = applyInPlaceDocumentImpl;
 
@@ -1422,9 +1314,6 @@ const MenuBar: React.FC<MenuBarProps> = ({
       // Open as unsaved document — user can save later via Cmd+S
       const scriptTitle = imported.title || name.replace(/\.\w+$/, '') || 'Untitled';
       store.setDocumentTitle(scriptTitle);
-      setCurrentProject(null);
-      setCurrentScriptId(null);
-      setScripts([]);
       // Track that this is an imported document so Save As can warn the user
       // that the save goes to WriTea Draft's library, not back to the source file.
       store.setImportedSource({ name, format: imported.formatLabel });
@@ -1439,7 +1328,7 @@ const MenuBar: React.FC<MenuBarProps> = ({
       console.error('Import failed:', err);
       showToast(`Import failed: ${err instanceof Error ? err.message : String(err)}`, 'error');
     }
-  }, [editor, clearTrackChanges, setCurrentProject, setCurrentScriptId, setScripts]);
+  }, [editor, clearTrackChanges]);
 
   /**
    * Put a recovered backup into the editor, the same way opening a .writea
@@ -1533,9 +1422,6 @@ const MenuBar: React.FC<MenuBarProps> = ({
       const store = useEditorStore.getState();
       const scriptTitle = result.name.replace(/\.\w+$/, '') || 'Untitled';
       store.setDocumentTitle(scriptTitle);
-      setCurrentProject(null);
-      setCurrentScriptId(null);
-      setScripts([]);
       store.setImportedSource({
         name: result.name,
         format: isYaml ? 'WriTea Draft AV YAML' : isXlsx ? 'AV Spreadsheet (.xlsx)' : 'AV Spreadsheet (.csv)',
@@ -1546,7 +1432,7 @@ const MenuBar: React.FC<MenuBarProps> = ({
       console.error('AV import failed:', err);
       showToast(`Import failed: ${err instanceof Error ? err.message : String(err)}`, 'error');
     }
-  }, [editor, clearTrackChanges, setCurrentProject, setCurrentScriptId, setScripts]);
+  }, [editor, clearTrackChanges]);
 
   // Core Word import: open binary file → parse → apply.  The pre-import
   // warning dialog and the unsaved-changes guard wrap this.
@@ -1571,9 +1457,6 @@ const MenuBar: React.FC<MenuBarProps> = ({
 
       const scriptTitle = parsed.scriptTitle || name.replace(/\.\w+$/, '') || 'Untitled';
       store.setDocumentTitle(scriptTitle);
-      setCurrentProject(null);
-      setCurrentScriptId(null);
-      setScripts([]);
       store.setImportedSource({ name, format: 'Microsoft Word (.docx)' });
 
       if (parsed.warnings.length > 0) {
@@ -1589,7 +1472,7 @@ const MenuBar: React.FC<MenuBarProps> = ({
       console.error('Word import failed:', err);
       showToast(`Word import failed: ${err instanceof Error ? err.message : String(err)}`, 'error');
     }
-  }, [editor, clearTrackChanges, setCurrentProject, setCurrentScriptId, setScripts]);
+  }, [editor, clearTrackChanges]);
 
   // Wraps handleImportDocxCore with the best-effort warning dialog.
   const handleImportDocx = useCallback(() => {
@@ -1612,9 +1495,6 @@ const MenuBar: React.FC<MenuBarProps> = ({
     // a fresh screenplay has the same (null) project/script ids the stash of an
     // imported or never-saved document carries.
     clearSessionDoc();
-    setCurrentProject(null);
-    setCurrentScriptId(null);
-    setScripts([]);
     const store = useEditorStore.getState();
     // Also drops documentOrigin, which is the point: without it, starting a new
     // screenplay while a file was open in place left Save still aimed at that
@@ -1643,7 +1523,7 @@ const MenuBar: React.FC<MenuBarProps> = ({
     if (window.location.pathname !== '/') {
       window.history.replaceState(null, '', '/');
     }
-  }, [editor, clearTrackChanges, setCurrentProject, setCurrentScriptId, setScripts]);
+  }, [editor, clearTrackChanges]);
 
   /**
    * File ▸ Close — put the document away and go back to an empty editor.
@@ -1759,9 +1639,6 @@ const MenuBar: React.FC<MenuBarProps> = ({
           const origin = useEditorStore.getState().documentOrigin;
           const settings = useSettingsStore.getState();
           const autoSaveFile = settings.autoSaveFiles;
-          // A library script with auto-save on is saved on the way out by the
-          // editor's own close handler; asking as well only raced it.
-          if (!origin && currentProject && currentScriptId && autoSaveAppliesToOpenDocument(settings, false)) return;
           // Held open until the work is saved or the writer has answered; the
           // dialog's Save and Discard both end in destroy(), and Cancel simply
           // leaves it open.
@@ -1789,7 +1666,7 @@ const MenuBar: React.FC<MenuBarProps> = ({
       cancelled = true;
       unlisten?.();
     };
-  }, [editorHasUnsavedChanges, confirmOrRun, currentProject, currentScriptId, saveInPlace]);
+  }, [editorHasUnsavedChanges, confirmOrRun, saveInPlace]);
 
   const handleExportFDX = useCallback(async () => {
     if (!editor) return;
@@ -2213,9 +2090,6 @@ const MenuBar: React.FC<MenuBarProps> = ({
       const result = await writeSnapshot({
         content,
         title: store.documentTitle || 'Untitled',
-        projectId: currentProject?.id ?? null,
-        scriptId: currentScriptId ?? null,
-        projectTitle: currentProject?.name,
         kind: 'manual',
       });
       // A successful manual backup also clears a paused scheduler — the user
@@ -2224,9 +2098,9 @@ const MenuBar: React.FC<MenuBarProps> = ({
       showToast(`Backed up to ${result.filename}`, 'success');
     } catch (err) {
       const reason = describeBackupError(err instanceof Error ? err.message : String(err));
-      showToast(`Backup failed — ${reason}`, 'error');
+      showToast(`Backup failed: ${reason}`, 'error');
     }
-  }, [buildSaveContent, currentProject, currentScriptId]);
+  }, [buildSaveContent]);
 
   const handleBackupNow = useCallback(() => {
     if (!backupsAvailable()) {
