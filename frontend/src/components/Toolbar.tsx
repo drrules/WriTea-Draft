@@ -16,6 +16,7 @@ import {
   FaSearchPlus,
   FaSearchMinus,
   FaSearch,
+  FaSpellCheck,
   FaStickyNote,
   FaTags,
   FaPaintBrush,
@@ -80,6 +81,8 @@ const Toolbar: React.FC<ToolbarProps> = ({ editor }) => {
     setPendingTagSelection,
     setEditingTagId,
     toolbarMode,
+    spellCheckEnabled,
+    toggleSpellCheck,
   } = useEditorStore();
 
   const activeTemplate = useFormattingTemplateStore((s) => s.getActiveTemplate());
@@ -860,8 +863,16 @@ const Toolbar: React.FC<ToolbarProps> = ({ editor }) => {
       >
         <FaHashtag />
       </button>
+      <button
+        className={`toolbar-btn ${spellCheckEnabled ? 'active' : ''}`}
+        title={spellCheckEnabled ? 'Auto Spell Check: on (click to turn off)' : 'Auto Spell Check: off (click to turn on)'}
+        aria-pressed={spellCheckEnabled}
+        onClick={() => { toggleSpellCheck(); editor?.chain().focus().run(); if (inOverflow) setOverflowOpen(false); }}
+      >
+        <FaSpellCheck />
+      </button>
     </div>
-  ), [setSearchOpen, setGoToPageOpen]);
+  ), [editor, setSearchOpen, setGoToPageOpen, spellCheckEnabled, toggleSpellCheck]);
 
   const renderZoom = useCallback((_inOverflow = false) => (
     <div className="toolbar-group zoom-group" key="zoom">
