@@ -3395,12 +3395,20 @@ const MenuBar: React.FC<MenuBarProps> = ({
           <div className="dialog-header">About WriTea Draft</div>
           <div className="dialog-body about-body">
             <div className="about-title">WriTea Draft</div>
-            <div className="about-version">Version 1.0.42</div>
+            <div className="about-version">Version 1.1.84</div>
             <div className="about-tagline">Free, open-source screenwriting software</div>
 
             <div className="about-whats-new">
-              <div className="about-section-title">What's New in 1.0.42</div>
+              <div className="about-section-title">What's New in 1.1.84</div>
               <div className="about-changelog">
+              <div className="about-subsection-title">v1.1.84</div>
+              <ul className="about-list">
+                <li><strong>Scripts Are Files.</strong> Saving, backups, crash recovery, version history, locations and images all work from your script file now. There is no hidden library or database behind the editor, and nothing to lose if the app is reinstalled.</li>
+                <li><strong>WriTea Extras.</strong> When a script uses something Final Draft cannot hold (version history or locations, for example), it saves as a .writea file beside your .fdx, and the .fdx is left exactly as it was. Exporting to Final Draft leaves the extras out. A .writea with nothing extra in it offers to go back to .fdx.</li>
+                <li><strong>A Leaner App.</strong> Table Read, accounts, sharing and the project library are gone, along with every connection to the upstream project's servers.</li>
+                <li><strong>Script Dictionary.</strong> The project dictionary is now a script dictionary, saved with the script it belongs to.</li>
+                <li><strong>Safer Opening.</strong> Dropping a file onto the editor asks first when you have unsaved changes.</li>
+              </ul>
               <div className="about-subsection-title">v1.0.42</div>
               <ul className="about-list">
                 <li><strong>Live Co-editing Without A Direct Path.</strong> If two computers cannot find each other directly (a phone hotspot or a protected network, for example), the host is offered a relay code and you swap codes a second time. The relay only passes the traffic along. Your IP address is shared with it, but your document is not: the work itself is end-to-end encrypted. Some networks block relays too, so after three failed tries in one session the dialog asks you to try again at another time.</li>

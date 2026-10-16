@@ -87,7 +87,7 @@ export function getAppVersion(): string {
   if (typeof window !== 'undefined' && (window as any).__WRITEADRAFT_VERSION__) {
     return (window as any).__WRITEADRAFT_VERSION__;
   }
-  return '1.0.42';
+  return '1.1.84';
 }
 
 /** Format a report as plain text suitable for pasting into a bug report. */
