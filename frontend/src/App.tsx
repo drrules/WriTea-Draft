@@ -5,7 +5,6 @@ import Toast from './components/Toast';
 import StorageFallbackDialog from './components/StorageFallbackDialog';
 import SaveErrorDialog from './components/SaveErrorDialog';
 import OneDriveWarningDialog from './components/OneDriveWarningDialog';
-import LinkedFileSync from './components/LinkedFileSync';
 import { pluginRegistry } from './plugins/registry';
 import './styles/screenplay.css';
 import './styles/avScript.css';
@@ -25,9 +24,7 @@ function App() {
         <Route path="/" element={<ScreenplayEditor />} />
         {/* The project screens are gone; old links land in the editor. */}
         <Route path="/projects" element={<Navigate to="/" replace />} />
-        <Route path="/project/:projectId" element={<Navigate to="/" replace />} />
-        <Route path="/project/:projectId/edit/:scriptId" element={<ScreenplayEditor />} />
-        <Route path="/project/:projectId/history/:scriptId/:commitHash" element={<ScreenplayEditor />} />
+        <Route path="/project/*" element={<Navigate to="/" replace />} />
         <Route path="/settings" element={<SettingsPageC />} />
         {pluginRoutes.map((r) => (
           <Route key={r.path} path={r.path} element={<r.component />} />
@@ -37,7 +34,6 @@ function App() {
       <StorageFallbackDialog />
       <SaveErrorDialog />
       <OneDriveWarningDialog />
-      <LinkedFileSync />
     </>
   );
 }
