@@ -1,4 +1,3 @@
-import { useLocationStore } from '../stores/locationStore';
 import { useVersionStore } from '../stores/versionStore';
 import React, { useEffect, useCallback, useRef, useState, useMemo } from 'react';
 import { useEditor, EditorContent, type Editor } from '@tiptap/react';
@@ -50,12 +49,11 @@ import type { EndnotePage } from '../utils/footnotes';
 import { createContdCasePlugin } from '../editor/contdCase';
 import { ScreenplayImage } from '../editor/extensions/ScreenplayImage';
 import { buildImageAttrs, insertImageNode, warnIfImageDegraded } from '../utils/insertImage';
-import { demoteDataUrlsToScratch, promoteScratchImages } from '../services/promoteScratchAssets';
+import { demoteDataUrlsToScratch } from '../services/promoteScratchAssets';
 import { docHasInlineImageBytes } from '../utils/scratchRefs';
 import { setLiveScratchDocSource } from '../services/scratchSweep';
 
-import { useEditorStore, DEFAULT_PAGE_LAYOUT, DEFAULT_TAG_CATEGORIES, resolveMoresContds, resolveHeaderFooter, printedPageNumber, savedProfileFields, type SceneInfo } from '../stores/editorStore';
-import { useAssetStore } from '../stores/assetStore';
+import { useEditorStore, resolveMoresContds, resolveHeaderFooter, printedPageNumber, type SceneInfo } from '../stores/editorStore';
 import type { ElementType, HeaderFooterContent } from '../stores/editorStore';
 import HeaderFooterBand from './HeaderFooterBand';
 import HeaderFooterDialog from './HeaderFooterDialog';
@@ -107,8 +105,6 @@ import { buildSaveContent as buildSaveContentShared, stripSaveMetadata } from '.
 import { hydrateEditorStoresFromContent } from '../utils/hydrateStores';
 import { FdxFidelity } from '../editor/extensions/FdxFidelity';
 import { FdxAdornment } from '../editor/extensions/FdxAdornment';
-import { normalizeScriptProfile } from '../utils/scriptProfile';
-import { restoreRevisionState } from '../utils/revisionState';
 import { characterKey } from '../utils/nodeText';
 import { computeContdChanges, type ContdBlock } from '../editor/contdAuto';
 import { useBackupScheduler } from '../hooks/useBackupScheduler';
@@ -116,32 +112,21 @@ import { useRecoverySnapshot } from '../hooks/useRecoverySnapshot';
 import { useOpenDocumentGuard } from '../hooks/useOpenDocumentGuard';
 /** Formats Save can write back, so a file opened from the OS can stay attached. */
 const IN_PLACE_ORIGIN_EXTENSIONS = ['writea', 'fdx', 'fountain', 'fadein', 'osf', 'txt'];
-import { documentKey } from '../services/openDocuments';
 import RecoveryPromptDialog from './RecoveryPromptDialog';
 import SceneSpacingPromptDialog from './SceneSpacingPromptDialog';
-import { resolveSceneHeadingSpaceBefore, predatesStandardSceneSpacing } from '../utils/elementSpacing';
 import DocumentOpenElsewhereDialog from './DocumentOpenElsewhereDialog';
-import {
-  clearRecoverySnapshot,
-  hasRecoverableSnapshot,
-  type RecoverySnapshot,
-} from '../services/recoveryService';
+import { hasRecoverableSnapshot, type RecoverySnapshot } from '../services/recoveryService';
 import { useBackupStatusStore } from '../stores/backupStatusStore';
 import { runRetext, RETEXT_CATEGORIES, type RetextCategory } from '../editor/grammar/retextProvider';
 import { runHarper } from '../editor/grammar/harperProvider';
 import { clearEditorHistory, hasEditsSinceLoad } from '../editor/clearHistory';
 import { useProjectStore } from '../stores/projectStore';
-import { api } from '../services/api';
-import { cloudApi } from '../services/cloudApi';
-import { projectApi } from '../services/projectApi';
 import { scriptApi } from '../services/scriptApi';
 import { showToast } from './Toast';
 import VersionHistory from './VersionHistory';
 import AssetManager from './AssetManager';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useGoBack, useGoBackTo } from '../hooks/useGoBack';
-import OpenFile from './OpenFile';
-import type { OpenSource } from './OpenFile';
 import WelcomeDialog, { type WelcomeChoice } from './WelcomeDialog';
 import { downloadWritea } from '../utils/writeaFormat';
 import { pasteAsFountain } from '../utils/pasteFountain';
@@ -155,7 +140,6 @@ import {
   BINARY_IMPORT_EXTENSIONS,
 } from '../utils/importScreenplay';
 import { stashSessionDoc, takeSessionDoc } from '../utils/sessionDoc';
-import SaveAsDialog from './SaveAsDialog';
 import TitlePageEditor from './TitlePageEditor';
 import MoresContdsDialog from './MoresContdsDialog';
 import FontsDialog from './FontsDialog';
@@ -165,7 +149,6 @@ import CompareVersionPicker from './CompareVersionPicker';
 import ZoomPanel from './ZoomPanel';
 import { useIsTouchDevice, useSwipeEdge, usePinchZoom } from '../hooks/useTouch';
 import { useSettingsStore } from '../stores/settingsStore';
-import { useLinkedFileStore, autoSaveAppliesToOpenDocument } from '../stores/linkedFileStore';
 import { startCollabSync, stopCollabSync } from '../services/collabSync';
 import { LiveProvider } from '../services/liveProvider';
 import LiveSessionDialog from './LiveSessionDialog';
@@ -176,56 +159,6 @@ import { pluginRegistry } from '../plugins/registry';
 import { createTrackChangesPlugin, trackChangesPluginKey } from '../editor/trackChanges';
 import { readStoredVersion } from '../services/scriptVersions';
 import type { VersionSummary } from '../services/scriptVersions';
-
-/**
- * Bring a linked script's library copy and its file on disk into agreement
- * before the script is shown (issue #135), and tell the writer what happened.
- * Returns the linked file's path, or null when the script is not linked.
- *
- * Never throws: a file that cannot be reached is reported, and the library
- * copy — which is always there — is what opens.
- */
-async function syncLinkedFileBeforeOpen(
-  projectId: string,
-  scriptId: string,
-  scriptTitle?: string,
-): Promise<string | null> {
-  try {
-    if (useProjectStore.getState().isCloudScript(projectId, scriptId)) return null;
-    const lf = await import('../services/linkedFiles');
-    if (!lf.linkingSupported()) return null;
-    const result = await lf.syncScriptWithFile(projectId, scriptId, { scriptTitle });
-    const name = 'path' in result && result.path ? lf.basenameOf(result.path) : '';
-    switch (result.kind) {
-      case 'none':
-        return null;
-      case 'loaded-from-file':
-        showToast(`${name} was changed outside WriTea Draft — opened that version.`, 'info');
-        break;
-      case 'kept-library':
-        showToast(
-          result.preservedAs
-            ? `Kept WriTea Draft's version and saved it to ${name}. The other version was kept as ${lf.basenameOf(result.preservedAs)}.`
-            : `Kept WriTea Draft's version and saved it to ${name}.`,
-          'success',
-        );
-        break;
-      case 'missing':
-        showToast(`${name} is no longer in its folder. Saving will create it again.`, 'error');
-        break;
-      case 'unreachable':
-        showToast(
-          `Could not reach ${name || 'the linked file'}: ${result.error}. Showing WriTea Draft's copy — it will be saved to the file when the drive is back.`,
-          'error',
-        );
-        break;
-    }
-    return result.path || (await lf.getLink(scriptId))?.path || null;
-  } catch (err) {
-    console.error('[linked-files] check before opening failed:', err);
-    return null;
-  }
-}
 
 // Vibrant dark colors for collaboration cursors and avatars
 const COLLAB_COLORS = [
@@ -413,7 +346,7 @@ const ScreenplayEditor: React.FC = () => {
     saveStatus, saveError, setSaveStatus,
   } = useEditorStore();
 
-  const { currentProject, currentScriptId, setCurrentProject, setCurrentScriptId, scriptReloadKey } = useProjectStore();
+  const { currentProject, currentScriptId, scriptReloadKey } = useProjectStore();
 
   // ── Collaboration state ──
   const [collabMode, setCollabMode] = useState(false);
@@ -568,8 +501,6 @@ const ScreenplayEditor: React.FC = () => {
       // whatever was open before, so nothing can save over it.
       useEditorStore.getState().setDocumentOrigin(null);
       useEditorStore.getState().setImportedSource(null);
-      setCurrentProject(null);
-      setCurrentScriptId(null);
       setDocumentTitle('Untitled Screenplay');
     }
     liveActiveRef.current = true;
@@ -580,7 +511,7 @@ const ScreenplayEditor: React.FC = () => {
     setEditorKey((k) => k + 1);
     setLiveDialog(null);
     addCollabActivity(role === 'host' ? 'Your partner connected' : 'Connected to the host');
-  }, [addCollabActivity, setCurrentProject, setCurrentScriptId, setDocumentTitle]);
+  }, [addCollabActivity, setDocumentTitle]);
 
   // Force editor recreation when collab mode toggles
   const [editorKey, setEditorKey] = useState(0);
@@ -659,7 +590,6 @@ const ScreenplayEditor: React.FC = () => {
   const [overlays, setOverlays] = useState<OverlayInfo[]>([]);
 
   const {
-    openFileOpen, setOpenFileOpen, saveAsOpen, setSaveAsOpen,
     titlePageEditorOpen, setTitlePageEditorOpen,
     moresContdsOpen, setMoresContdsOpen,
     footnoteDialogOpen, setFootnoteDialogOpen,
@@ -1462,19 +1392,6 @@ const ScreenplayEditor: React.FC = () => {
     }
   }, [editor]);
 
-  // Helper: clear track changes when switching documents
-  const clearTrackChanges = useCallback(() => {
-    const store = useEditorStore.getState();
-    if (!store.trackChangesEnabled) return;
-    store.setTrackChangesEnabled(false);
-    store.setTrackChangesLabel('');
-    if (editor) {
-      const { tr } = editor.state;
-      tr.setMeta(trackChangesPluginKey, { enabled: false, baseline: null });
-      editor.view.dispatch(tr);
-    }
-  }, [editor]);
-
   // The revision gutter measures on editor updates; a change of mark (Revision
   // Settings, or a collaborator's) changes no document, so nudge it to redraw.
   const revisionSettings = useEditorStore((st) => st.revisionSettings);
@@ -2048,7 +1965,6 @@ const ScreenplayEditor: React.FC = () => {
     openElsewhere,
     promptTitle: openElsewhereTitle,
     promptIsPreflight: openElsewhereIsPreflight,
-    guardOpen,
     openAnyway: openDuplicateAnyway,
     dismiss: dismissOpenElsewhere,
   } = useOpenDocumentGuard({
@@ -2598,208 +2514,6 @@ const ScreenplayEditor: React.FC = () => {
     editor?.commands.focus();
   }, [editor]);
 
-  /** Loads a stored script into this window. Guarded by handleOpenFile. */
-  const openScriptInThisWindow = useCallback(
-    async (
-      projectId: string,
-      project: import('../services/api').ProjectInfo,
-      scriptId: string,
-      scriptTitle: string,
-      _source: OpenSource = 'local',
-    ) => {
-      if (!editor) {
-        console.error('Editor not available');
-        return;
-      }
-      clearTrackChanges();
-      scriptSwitchingRef.current = true;
-      try {
-        // Flush unsaved changes to the CURRENT script before switching —
-        // unless auto-save is off, in which case File → Open has already
-        // asked, and "Discard" has to mean discard.
-        if (currentProject && currentScriptId && autoSaveAppliesToOpenDocument(useSettingsStore.getState(), false)) {
-          const pendingContent = buildSaveContent();
-          if (pendingContent) {
-            const pendingJson = JSON.stringify(pendingContent);
-            if (pendingJson !== lastSavedJsonRef.current) {
-              lastSavedJsonRef.current = pendingJson;
-              try { await scriptApi.saveScript(currentProject.id, currentScriptId, { content: pendingContent }); } catch {}
-            }
-          }
-        }
-
-        const linkedPath = await syncLinkedFileBeforeOpen(projectId, scriptId, scriptTitle);
-        useLinkedFileStore.getState().setOpenScriptFile(linkedPath ? { scriptId, path: linkedPath } : null);
-        const scriptResp = await scriptApi.getScript(projectId, scriptId);
-        const content = scriptResp.content as Record<string, unknown> | null;
-
-        // Switch the project context first so the dictionary-words save effect
-        // sees the new project before any spellChecker.setProjectWords() fires.
-        setCurrentProject(project);
-        setCurrentScriptId(scriptId);
-        // Opening a project script clears any prior "imported file" notice.
-        useEditorStore.getState().setImportedSource(null);
-        // Before setContent, so the load is not marked as a revision.
-        restoreRevisionState(content);
-
-        try {
-          if (content && typeof content === 'object' && 'type' in content && content.type === 'doc') {
-            editor.commands.setContent(stripSaveMetadata(content).pmDoc);
-          } else if (content && typeof content === 'object' && Object.keys(content).length > 0) {
-            editor.commands.setContent(content);
-          } else {
-            editor.commands.setContent({ type: 'doc', content: [{ type: 'sceneHeading', content: [] }] });
-          }
-        } catch (setErr) {
-          console.error('setContent failed, using blank doc:', setErr);
-          showToast(`Failed to render content: ${setErr instanceof Error ? setErr.message : String(setErr)}`, 'error');
-          editor.commands.setContent({ type: 'doc', content: [{ type: 'sceneHeading', content: [] }] });
-        }
-        clearEditorHistory(editor);
-
-        // Restore metadata from top-level content keys
-        const store = useEditorStore.getState();
-        // Clear all per-file metadata first
-        store.setCharacterProfiles([]);
-        store.setCharacterRelationships([]);
-        store.setNotes([]);
-        store.setGeneralNotes([]);
-        store.setTags([]);
-        store.setTagCategories([...DEFAULT_TAG_CATEGORIES]);
-        store.setBeats([]);
-        store.setBeatColumns([]);
-        useAssetStore.getState().setAssets([]);
-        useVersionStore.getState().setVersions([]);
-        useLocationStore.getState().setLocations([]);
-        store.setPageLayout({ ...DEFAULT_PAGE_LAYOUT });
-        store.setScriptProfile(normalizeScriptProfile((content as Record<string, unknown> | null | undefined)?._scriptProfile));
-        // Default per-doc grammar to off; the block below overrides
-        // from the loaded content if the user had enabled it previously.
-        store.setGrammarCheckEnabled(false);
-        const parseAttr2 = (val: unknown): unknown[] => {
-          if (typeof val === 'string') { try { const p = JSON.parse(val); return Array.isArray(p) ? p : []; } catch { return []; } }
-          if (Array.isArray(val)) return val;
-          return [];
-        };
-        if (content) {
-          const c = content as Record<string, unknown>;
-          const notes2 = parseAttr2(c._notes);
-          if (notes2.length > 0) store.setNotes(notes2 as import('../stores/editorStore').NoteInfo[]);
-          const gNotes2 = parseAttr2(c._generalNotes);
-          if (gNotes2.length > 0) store.setGeneralNotes(gNotes2 as import('../stores/editorStore').GeneralNote[]);
-          const tags2 = parseAttr2(c._tags);
-          if (tags2.length > 0) store.setTags(tags2 as import('../stores/editorStore').TagItem[]);
-          const tagCats2 = parseAttr2(c._tagCategories);
-          if (tagCats2.length > 0) store.setTagCategories(tagCats2 as import('../stores/editorStore').TagCategory[]);
-          const profiles2 = parseAttr2(c._characterProfiles);
-          if (profiles2.length > 0) {
-            for (const prof of profiles2 as Record<string, unknown>[]) {
-              if (prof.name && typeof prof.name === 'string') {
-                store.upsertCharacterProfile(prof.name, savedProfileFields(prof));
-              }
-            }
-          }
-          const rels2 = parseAttr2(c._characterRelationships);
-          if (rels2.length > 0) {
-            store.setCharacterRelationships(rels2 as import('../stores/editorStore').CharacterRelationship[]);
-          }
-          const beatsArr2 = parseAttr2(c._beats);
-          store.setBeats(beatsArr2 as import('../stores/editorStore').BeatInfo[]);
-          const beatCols2 = parseAttr2(c._beatColumns);
-          store.setBeatColumns(beatCols2 as import('../stores/editorStore').BeatColumn[]);
-          // Restore per-document template
-          if (c._templateId && typeof c._templateId === 'string') {
-            useFormattingTemplateStore.getState().setActiveTemplateId(c._templateId);
-          } else {
-            useFormattingTemplateStore.getState().setActiveTemplateId(null);
-          }
-          // Restore per-document page layout (header/footer, margins)
-          if (c._pageLayout && typeof c._pageLayout === 'object') {
-            store.setPageLayout({ ...DEFAULT_PAGE_LAYOUT, ...(c._pageLayout as Record<string, unknown>) });
-          }
-          // Scene-heading spacing: a script written before the two-line
-          // standard opens on the spacing it was composed against, and is
-          // offered the change once (issue #76).
-          store.setSceneHeadingSpaceBefore(resolveSceneHeadingSpaceBefore(c));
-          setSceneSpacingPrompt(predatesStandardSceneSpacing(c));
-          // Restore the per-document grammar check toggle (spell check is app-wide)
-          store.setGrammarCheckEnabled(c._grammarCheckEnabled === true);
-          // Per-script project-dictionary toggle (default on).
-          spellChecker.setProjectDictionaryEnabled(
-            typeof c._projectDictEnabled === 'boolean' ? c._projectDictEnabled : true,
-          );
-          // Enabled global dictionaries.
-          if (c._enabledGlobalDicts === undefined) {
-            const lib = useEditorStore.getState().customDictionaries;
-            spellChecker.setEnabledGlobalDicts(lib['Personal'] ? ['Personal'] : []);
-          } else {
-            const enabledGlobals2 = parseAttr2(c._enabledGlobalDicts);
-            spellChecker.setEnabledGlobalDicts(enabledGlobals2 as string[]);
-          }
-          // Ignored-words / ignored-once carry per document.
-          spellChecker.setIgnoredWords(parseAttr2(c._ignoredWords) as string[]);
-          spellChecker.setIgnoredOnce(parseAttr2(c._ignoredOnce) as string[]);
-          // Project dictionary: project entity is source of truth; merge with
-          // legacy per-script `_customDictWords` for back-compat.
-          const scriptDict2 = (parseAttr2(c._customDictWords) as string[]).map(String);
-          const projDict2 = ((project.properties?.dictionary_words ?? []) as string[]).map(String);
-          const merged2 = new Set<string>();
-          for (const w of projDict2) if (typeof w === 'string') merged2.add(w.toLowerCase());
-          for (const w of scriptDict2) if (typeof w === 'string') merged2.add(w.toLowerCase());
-          const mergedArr2 = [...merged2].sort();
-          spellChecker.setProjectWords(mergedArr2);
-          const needsMigration2 =
-            scriptDict2.length > 0 &&
-            JSON.stringify(mergedArr2) !== JSON.stringify([...projDict2].sort());
-          if (needsMigration2) {
-            try {
-              const updated = await projectApi.updateProject(project.id, {
-                properties: { ...project.properties, dictionary_words: mergedArr2 } as any,
-              });
-              setCurrentProject(updated);
-            } catch (err) {
-              console.warn('Project dictionary migration save failed (open-file path)', err);
-            }
-          }
-        }
-        setDocumentTitle(scriptTitle);
-        requestAnimationFrame(() => updateScenes());
-        // Back the newly opened script up right away rather than leaving it
-        // unprotected until the next interval tick.
-        useBackupStatusStore.getState().noteDocumentOpened();
-      } catch (err) {
-        console.error('Failed to open script:', err);
-        showToast('Failed to open script. Make sure the backend server is running on port 8000.', 'error');
-      } finally {
-        scriptSwitchingRef.current = false;
-      }
-    },
-    [editor, collabMode, liveMode, collabUserName, setCurrentProject, setCurrentScriptId, setDocumentTitle, updateScenes, currentProject, currentScriptId, buildSaveContent],
-  );
-
-  /**
-   * Open a stored script, unless another window already has it.
-   *
-   * The check happens before the load rather than after, so a duplicate is
-   * never put on screen and then taken away again — being shown a screenplay
-   * and immediately asked whether you meant to open it reads as if opening it
-   * caused the problem.
-   */
-  const handleOpenFile = useCallback(
-    async (
-      projectId: string,
-      project: import('../services/api').ProjectInfo,
-      scriptId: string,
-      scriptTitle: string,
-      source: OpenSource = 'local',
-    ) => {
-      setOpenFileOpen(false);
-      await guardOpen(documentKey(projectId, scriptId, null), scriptTitle, () =>
-        openScriptInThisWindow(projectId, project, scriptId, scriptTitle, source),
-      );
-    },
-    [guardOpen, openScriptInThisWindow, setOpenFileOpen],
-  );
 
   const handleWelcomeChoice = useCallback(async (choice: WelcomeChoice) => {
     setShowWelcome(false);
@@ -2888,9 +2602,6 @@ const ScreenplayEditor: React.FC = () => {
       clearEditorHistory(editor);
       setDocumentTitle(imported.title || title);
       setShowWelcome(false);
-      // Clear project context — this is a standalone opened file
-      setCurrentProject(null);
-      setCurrentScriptId(null);
 
       // Opened *from* a file, so it stays attached to that file where the
       // platform allows it: double-clicking a screenplay and pressing Save
@@ -2936,7 +2647,7 @@ const ScreenplayEditor: React.FC = () => {
       console.error('Failed to open external file:', filePath, detail, err);
       showToast(`Failed to open file: ${detail}`, 'error');
     }
-  }, [editor, setDocumentTitle, setCurrentProject, setCurrentScriptId]);
+  }, [editor, setDocumentTitle]);
 
   useEffect(() => {
     if (!editor) return;
@@ -3065,8 +2776,6 @@ const ScreenplayEditor: React.FC = () => {
       editor.commands.setContent(imported.doc, true);
       clearEditorHistory(editor);
       setDocumentTitle(imported.title || title);
-      setCurrentProject(null);
-      setCurrentScriptId(null);
       setShowWelcome(false);
       useEditorStore.getState().setImportedSource({ name: file.name, format: imported.formatLabel });
       useBackupStatusStore.getState().noteDocumentOpened();
@@ -3075,7 +2784,7 @@ const ScreenplayEditor: React.FC = () => {
       console.error('Failed to import dropped file:', err);
       showToast(`Failed to import file: ${err instanceof Error ? err.message : String(err)}`, 'error');
     }
-  }, [editor, setDocumentTitle, setCurrentProject, setCurrentScriptId]);
+  }, [editor, setDocumentTitle]);
 
   const handleEditorDragOver = useCallback((e: React.DragEvent) => {
     if (!e.dataTransfer.types.includes('Files')) return;
@@ -3255,99 +2964,6 @@ const ScreenplayEditor: React.FC = () => {
     };
   }, [editor, hasUnsavedChanges, importDroppedFile]);
 
-  /**
-   * Move images that live outside a project into the one being saved to.
-   *
-   * Runs before the document is serialized (see SaveAsDialog.onProjectReady),
-   * so the first stored copy already references real assets rather than this
-   * machine's scratch store.
-   */
-  const handlePromoteImagesInto = useCallback(
-    async (projectId: string, destination: 'local' | 'cloud') => {
-      const result = await promoteScratchImages(
-        editor,
-        projectId,
-        destination === 'cloud' ? cloudApi : api,
-      );
-      if (result.failed > 0) {
-        showToast(
-          `${result.failed} image${result.failed === 1 ? '' : 's'} could not be moved into the project and may not open on another device.`,
-          'error',
-        );
-      }
-    },
-    [editor],
-  );
-
-  const handleSaveAsComplete = useCallback(
-    async (
-      projectId: string,
-      _projectName: string,
-      scriptId: string,
-      scriptTitle: string,
-      destination: 'local' | 'cloud',
-    ) => {
-      setSaveAsOpen(false);
-      // Check if there's a deferred action (e.g. "New Screenplay") waiting
-      const store = useEditorStore.getState();
-      const hasDeferredAction = !!store.postSaveAction;
-
-      // Use the same backend the SaveAsDialog wrote to. Without this branch
-      // a cloud-saved script would 404 against the local SQLite getProject
-      // and the editor would never finish wiring up to the new file.
-      const client = destination === 'cloud' ? cloudApi : api;
-
-      try {
-        const project = await client.getProject(projectId);
-        if (destination === 'cloud') {
-          // Mark BOTH the project and the script as cloud-routed. The script
-          // marker keeps subsequent saves dispatching to cloudApi; the
-          // project marker makes the project show up under the "Cloud" tab
-          // of the project list and routes ProjectView's reads correctly.
-          const ps = useProjectStore.getState();
-          ps.markCloudProject(projectId);
-          ps.markCloudScript(projectId, scriptId);
-        }
-        setCurrentProject(project);
-        setCurrentScriptId(scriptId);
-        setDocumentTitle(scriptTitle);
-        // In a project kept in a folder the new script already has a file of
-        // its own (issue #135), which every library save also writes.
-        if (destination !== 'cloud') {
-          try {
-            const lf = await import('../services/linkedFiles');
-            const link = await lf.getLink(scriptId);
-            useLinkedFileStore.getState().setOpenScriptFile(link ? { scriptId, path: link.path } : null);
-          } catch (err) {
-            console.warn('[linked-files] could not look up the new script\'s file', err);
-          }
-        }
-        // Save-as resolved an imported document into a real project script —
-        // the "imported file" notice is no longer relevant.
-        store.setImportedSource(null);
-        const scripts = await client.listScripts(projectId);
-        useProjectStore.getState().setScripts(scripts);
-        // Only navigate to the project route if there's no deferred action
-        // that will reset the editor state (e.g. New Screenplay)
-        if (!hasDeferredAction) {
-          navigate(`/project/${projectId}/edit/${scriptId}`, { replace: true });
-        }
-        showToast(destination === 'cloud' ? 'Saved to cloud' : 'Saved', 'success');
-        // Save As is how a recovered or imported document becomes a real
-        // script, so it is the point at which there is nothing left to recover.
-        clearRecoverySnapshot();
-      } catch (err) {
-        console.error('Failed to finalize save:', err);
-      }
-      // Run deferred action (e.g. New Screenplay, Import) that was waiting for save-as
-      if (hasDeferredAction) {
-        const action = store.postSaveAction;
-        store.setPostSaveAction(null);
-        if (action) action();
-      }
-    },
-    [setSaveAsOpen, setCurrentProject, setCurrentScriptId, setDocumentTitle, navigate],
-  );
 
 
   // ── Compare with Version picker callback ──
@@ -4043,12 +3659,6 @@ const ScreenplayEditor: React.FC = () => {
       )}
       {!isHistoryMode && <VersionHistory editor={editor} />}
       {!isHistoryMode && <AssetManager />}
-      {!isHistoryMode && openFileOpen && (
-        <OpenFile
-          onOpen={handleOpenFile}
-          onClose={() => setOpenFileOpen(false)}
-        />
-      )}
       {!isHistoryMode && showWelcome && !recoveryPending && <WelcomeDialog onChoice={handleWelcomeChoice} />}
       {/* After the recovery prompt, never alongside it — two launch dialogs at
           once is what #68 warned about. */}
@@ -4070,21 +3680,6 @@ const ScreenplayEditor: React.FC = () => {
           documentTitle={openElsewhereTitle || backupDocumentTitle}
           onSwitch={switchToOtherWindow}
           onOpenAnyway={openDuplicateAnyway}
-        />
-      )}
-      {!isHistoryMode && saveAsOpen && (
-        <SaveAsDialog
-          defaultProjectName={currentProject?.name || 'My Project'}
-          defaultFileName={useEditorStore.getState().documentTitle || 'First Draft'}
-          defaultDestination={
-            currentProject && useProjectStore.getState().isCloudProject(currentProject.id)
-              ? 'cloud'
-              : 'local'
-          }
-          onSaved={handleSaveAsComplete}
-          onProjectReady={handlePromoteImagesInto}
-          onClose={() => setSaveAsOpen(false)}
-          buildContent={buildSaveContent}
         />
       )}
       {!isHistoryMode && compareVersionOpen && (
