@@ -72,7 +72,7 @@ async function saveDialogPath(filename: string): Promise<string> {
     const { isDesktopTauri } = await import('../services/platform');
     if (!isDesktopTauri()) return filename;
     const { useEditorStore } = await import('../stores/editorStore');
-    const lf = await import('../services/linkedFiles');
+    const lf = await import('./paths');
     const origin = useEditorStore.getState().documentOrigin;
     let dir: string | null = origin ? lf.dirnameOf(origin.bookmark) : null;
     if (!dir) {

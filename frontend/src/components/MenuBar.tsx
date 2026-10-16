@@ -394,7 +394,7 @@ const MenuBar: React.FC<MenuBarProps> = ({
    */
   const offerFdxInstead = useCallback(async (origin: DocumentOrigin): Promise<boolean | null> => {
     const { ask, save } = await import('@tauri-apps/plugin-dialog');
-    const lf = await import('../services/linkedFiles');
+    const lf = await import('../utils/paths');
     const s = useEditorStore.getState();
     const message = `This can be saved as an FDX, it has no extra content.\n\nYour ${lf.basenameOf(origin.bookmark)} stays as it is.`;
     let go = false;
@@ -443,7 +443,7 @@ const MenuBar: React.FC<MenuBarProps> = ({
    */
   const saveAsWriteaBeside = useCallback(async (origin: DocumentOrigin, extras: string[]): Promise<boolean> => {
     const { ask, save } = await import('@tauri-apps/plugin-dialog');
-    const lf = await import('../services/linkedFiles');
+    const lf = await import('../utils/paths');
     const s = useEditorStore.getState();
     const message = `This script contains information that isn't included in FDX (${extras.join(', ')}).\n\nWe're using our own extension, .writea, saved beside the original, so your .fdx won't be changed. If you want a file that's compatible with Final Draft, export it from File > Export and those parts will be stripped out.`;
     let go = false;
@@ -615,7 +615,7 @@ const MenuBar: React.FC<MenuBarProps> = ({
     if (!editor) return false;
     const s = useEditorStore.getState();
     try {
-      const lf = await import('../services/linkedFiles');
+      const lf = await import('../utils/paths');
       const { save } = await import('@tauri-apps/plugin-dialog');
       const origin = s.documentOrigin;
       let defaultDir: string | null = origin ? lf.dirnameOf(origin.bookmark) : null;
@@ -1226,18 +1226,6 @@ const MenuBar: React.FC<MenuBarProps> = ({
       }
 
       const opened = outcome.document;
-
-      // A file that is linked to a script in a project folder is that script.
-      // Editing it here as well would leave two copies writing one file.
-      if (isDesktopTauri()) {
-        const lf = await import('../services/linkedFiles');
-        const link = await lf.findLinkByPath(opened.bookmark);
-        if (link) {
-          showToast(`${opened.name} belongs to one of your projects — opened it there.`, 'info');
-          navigate(`/project/${link.projectId}/edit/${link.scriptId}`);
-          return;
-        }
-      }
 
       // Asked before the document is put on screen. The editor notices a
       // duplicate after the fact as well, but being shown a screenplay and
