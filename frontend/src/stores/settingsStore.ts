@@ -60,14 +60,6 @@ interface SettingsState {
 
   // ── Saving ────────────────────────────────────────────────────────────
   /**
-   * Whether a script in the library is saved on a timer and when the writer
-   * leaves it. Off means nothing is written until they save — leaving,
-   * switching scripts or closing the window asks first instead (issue #135).
-   * The crash-recovery snapshot runs either way.
-   */
-  autoSaveLibrary: boolean;
-  setAutoSaveLibrary: (v: boolean) => void;
-  /**
    * Whether a file opened from disk is written back on the same timer. Off by
    * default: Save to File rewrites the writer's own file, and in another
    * application's format that rewrite can lose what the format cannot hold, so
@@ -75,16 +67,10 @@ interface SettingsState {
    */
   autoSaveFiles: boolean;
   setAutoSaveFiles: (v: boolean) => void;
-  /** Seconds between auto-saves, for both of the above. */
+  /** Seconds between auto-saves. */
   autoSaveIntervalSeconds: number;
   setAutoSaveIntervalSeconds: (s: number) => void;
-  /**
-   * Folder new projects are created in, each in a subfolder of its own;
-   * '' = new projects live in the library only. Desktop only (issue #135).
-   */
-  defaultProjectFolder: string;
-  setDefaultProjectFolder: (path: string) => void;
-  /** Format scripts in a project folder are written in: writea, fountain or fdx. */
+  /** Format new scripts are written in by default. */
   defaultFileFormat: string;
   setDefaultFileFormat: (format: string) => void;
 
@@ -136,10 +122,8 @@ const STORAGE_KEY_BACKUP_INTERVAL = 'writeadraft:backupIntervalMinutes';
 const STORAGE_KEY_BACKUP_RETENTION = 'writeadraft:backupRetentionCount';
 const STORAGE_KEY_BACKUP_IMAGES = 'writeadraft:backupIncludeImages';
 const STORAGE_KEY_BACKUP_UNSAVED = 'writeadraft:backupUnsavedDocs';
-const STORAGE_KEY_AUTO_SAVE_LIBRARY = 'writeadraft:autoSaveLibrary';
 const STORAGE_KEY_AUTO_SAVE_FILES = 'writeadraft:autoSaveFiles';
 const STORAGE_KEY_AUTO_SAVE_INTERVAL = 'writeadraft:autoSaveIntervalSeconds';
-const STORAGE_KEY_DEFAULT_PROJECT_FOLDER = 'writeadraft:defaultProjectFolder';
 const STORAGE_KEY_DEFAULT_FILE_FORMAT = 'writeadraft:defaultFileFormat';
 const STORAGE_KEY_ELEMENT_MENU_ON_ENTER = 'writeadraft:elementMenuOnEnter';
 const STORAGE_KEY_PRINT_VIA_PDF = 'writeadraft:printViaPdf';
@@ -304,12 +288,6 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   },
 
   // ── Saving ────────────────────────────────────────────────────────────
-  autoSaveLibrary: loadBool(STORAGE_KEY_AUTO_SAVE_LIBRARY, true),
-  setAutoSaveLibrary: (v) => {
-    try { localStorage.setItem(STORAGE_KEY_AUTO_SAVE_LIBRARY, v ? '1' : '0'); } catch { /* ignore */ }
-    set({ autoSaveLibrary: v });
-  },
-
   autoSaveFiles: loadBool(STORAGE_KEY_AUTO_SAVE_FILES, false),
   setAutoSaveFiles: (v) => {
     try { localStorage.setItem(STORAGE_KEY_AUTO_SAVE_FILES, v ? '1' : '0'); } catch { /* ignore */ }
@@ -326,12 +304,6 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     const clamped = Math.min(MAX_AUTO_SAVE_INTERVAL_SECONDS, Math.max(MIN_AUTO_SAVE_INTERVAL_SECONDS, sec));
     try { localStorage.setItem(STORAGE_KEY_AUTO_SAVE_INTERVAL, String(clamped)); } catch { /* ignore */ }
     set({ autoSaveIntervalSeconds: clamped });
-  },
-
-  defaultProjectFolder: loadString(STORAGE_KEY_DEFAULT_PROJECT_FOLDER, ''),
-  setDefaultProjectFolder: (path) => {
-    try { localStorage.setItem(STORAGE_KEY_DEFAULT_PROJECT_FOLDER, path); } catch { /* ignore */ }
-    set({ defaultProjectFolder: path });
   },
 
   defaultFileFormat: loadString(STORAGE_KEY_DEFAULT_FILE_FORMAT, 'fdx'),

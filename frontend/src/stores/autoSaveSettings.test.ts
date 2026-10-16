@@ -1,14 +1,12 @@
 /**
  * Auto-save preferences (issue #135).
  *
- * The defaults are what every existing install already does — library scripts
- * auto-save, files opened from disk do not — so upgrading changes nothing. The
- * interval feeds setInterval directly, so it is clamped: a corrupted value must
- * never turn into a timer that fires continuously.
+ * Files opened from disk do not auto-save by default, so upgrading changes
+ * nothing. The interval feeds setInterval directly, so it is clamped: a
+ * corrupted value must never turn into a timer that fires continuously.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
-const KEY_LIBRARY = 'writeadraft:autoSaveLibrary';
 const KEY_FILES = 'writeadraft:autoSaveFiles';
 const KEY_INTERVAL = 'writeadraft:autoSaveIntervalSeconds';
 
@@ -19,7 +17,6 @@ async function freshStore() {
 }
 
 beforeEach(() => {
-  localStorage.removeItem(KEY_LIBRARY);
   localStorage.removeItem(KEY_FILES);
   localStorage.removeItem(KEY_INTERVAL);
 });
@@ -27,19 +24,16 @@ beforeEach(() => {
 describe('auto-save settings', () => {
   it('keeps the existing behaviour by default', async () => {
     const store = await freshStore();
-    expect(store.getState().autoSaveLibrary).toBe(true);
     expect(store.getState().autoSaveFiles).toBe(false);
     expect(store.getState().autoSaveIntervalSeconds).toBe(30);
   });
 
   it('remembers the writer\'s choices across a restart', async () => {
     let store = await freshStore();
-    store.getState().setAutoSaveLibrary(false);
     store.getState().setAutoSaveFiles(true);
     store.getState().setAutoSaveIntervalSeconds(120);
 
     store = await freshStore();
-    expect(store.getState().autoSaveLibrary).toBe(false);
     expect(store.getState().autoSaveFiles).toBe(true);
     expect(store.getState().autoSaveIntervalSeconds).toBe(120);
   });
