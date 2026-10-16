@@ -34,7 +34,7 @@ describe('platformFetch header forwarding', () => {
 
   it('forwards X-Device-Id from a plain object', async () => {
     const { platformFetch } = await loadPlatform();
-    await platformFetch('https://open-draft.com/api/auth/login', {
+    await platformFetch('https://example.com/api/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Device-Id': 'dev-123' },
     });
@@ -46,7 +46,7 @@ describe('platformFetch header forwarding', () => {
     const headers = new Headers();
     headers.set('Content-Type', 'application/json');
     headers.set('X-Device-Id', 'dev-456');
-    await platformFetch('https://open-draft.com/api/auth/refresh', { method: 'POST', headers });
+    await platformFetch('https://example.com/api/auth/refresh', { method: 'POST', headers });
     // Headers lowercases names; what matters is the value survives the trip.
     const sent = lastPayload().headers;
     const found = Object.entries(sent).find(([k]) => k.toLowerCase() === 'x-device-id');
@@ -55,7 +55,7 @@ describe('platformFetch header forwarding', () => {
 
   it('forwards X-Device-Id from a name/value tuple array', async () => {
     const { platformFetch } = await loadPlatform();
-    await platformFetch('https://open-draft.com/api/auth/login', {
+    await platformFetch('https://example.com/api/auth/login', {
       method: 'POST',
       headers: [['Content-Type', 'application/json'], ['X-Device-Id', 'dev-789']],
     });
@@ -64,7 +64,7 @@ describe('platformFetch header forwarding', () => {
 
   it('keeps Content-Type and Authorization on their dedicated params, not duplicated', async () => {
     const { platformFetch } = await loadPlatform();
-    await platformFetch('https://open-draft.com/api/auth/devices', {
+    await platformFetch('https://example.com/api/auth/devices', {
       headers: {
         'Content-Type': 'application/json',
         Authorization: 'Bearer tok',
@@ -79,7 +79,7 @@ describe('platformFetch header forwarding', () => {
 
   it('sends an empty map when there are no extra headers', async () => {
     const { platformFetch } = await loadPlatform();
-    await platformFetch('https://open-draft.com/api/demo-info');
+    await platformFetch('https://example.com/api/demo-info');
     expect(lastPayload().headers).toEqual({});
   });
 });
