@@ -1609,6 +1609,8 @@ const ScreenplayEditor: React.FC = () => {
         }
       }
       tr.setMeta('addToHistory', false);
+      // Tagged so the unsaved-changes listener can tell this tidy-up from an edit.
+      tr.setMeta('contdSync', true);
       editor.view.dispatch(tr);
     };
 
@@ -2082,7 +2084,10 @@ const ScreenplayEditor: React.FC = () => {
   const hasSaveTarget = Boolean(documentOriginPath);
   useEffect(() => {
     if (!editor || !hasSaveTarget || isCollabGuest) return;
-    const markUnsaved = () => {
+    const markUnsaved = ({ transaction }: { transaction: { getMeta: (key: string) => unknown } }) => {
+      // The automatic (CONT'D) pass rewrites the cues of a freshly opened file.
+      // That is the editor tidying up, not the writer changing anything.
+      if (transaction.getMeta('contdSync')) return;
       const { saveStatus } = useEditorStore.getState();
       // Only mark unsaved if we're in idle or saved state (not during saving or error)
       if (saveStatus === 'idle' || saveStatus === 'saved') {
