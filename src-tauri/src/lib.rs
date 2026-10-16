@@ -2867,10 +2867,6 @@ pub fn run() {
 
     let builder = tauri::Builder::default()
         // ── Plugins (available on all platforms) ────────────────────────
-        .plugin(
-            tauri_plugin_sql::Builder::default()
-                .build(),
-        )
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
@@ -3047,7 +3043,7 @@ pub fn run() {
                 .expect("failed to resolve app data directory");
             std::fs::create_dir_all(&app_data_dir).ok();
 
-            eprintln!("WriTea Draft starting — local SQLite storage");
+            eprintln!("WriTea Draft starting");
             eprintln!("Data dir: {}", app_data_dir.display());
 
             // ── Check for file association launch ──────────────────────────
