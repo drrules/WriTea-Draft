@@ -50,7 +50,7 @@ import { getCurrentElementRule, getLockedFormatting } from '../utils/effectiveFo
 import { selectionStartsNewPage } from '../editor/extensions';
 import { pluginRegistry } from '../plugins/registry';
 import { useNavigate } from 'react-router-dom';
-import { flushPendingSave, setLeaveGuard, leaveEditor as leaveEditorScreen } from '../services/pendingSave';
+import { flushPendingSave, setLeaveGuard, setReplaceGuard, leaveEditor as leaveEditorScreen } from '../services/pendingSave';
 import { useSettingsStore } from '../stores/settingsStore';
 import { clearEditorHistory } from '../editor/clearHistory';
 import { clearSessionDoc } from '../utils/sessionDoc';
@@ -785,6 +785,9 @@ const MenuBar: React.FC<MenuBarProps> = ({
       void flushPendingSave().then(go);
     });
   }, []);
+
+  // A file dropped on the editor asks the same unsaved-changes question as File > Open.
+  useEffect(() => setReplaceGuard(confirmOrRun), [confirmOrRun]);
 
   // ── Auto-save for a file opened from disk ──
   // Opt-in (Settings → Saving): it rewrites the writer's own file unasked, and

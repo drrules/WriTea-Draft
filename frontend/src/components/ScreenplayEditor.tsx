@@ -121,7 +121,7 @@ import { runRetext, RETEXT_CATEGORIES, type RetextCategory } from '../editor/gra
 import { runHarper } from '../editor/grammar/harperProvider';
 import { clearEditorHistory, hasEditsSinceLoad } from '../editor/clearHistory';
 import { useProjectStore } from '../stores/projectStore';
-import { scriptApi } from '../services/scriptApi';
+import { confirmBeforeReplacing } from '../services/pendingSave';
 import { showToast } from './Toast';
 import VersionHistory from './VersionHistory';
 import AssetManager from './AssetManager';
@@ -346,7 +346,7 @@ const ScreenplayEditor: React.FC = () => {
     saveStatus, saveError, setSaveStatus,
   } = useEditorStore();
 
-  const { currentProject, currentScriptId, scriptReloadKey } = useProjectStore();
+  const { scriptReloadKey } = useProjectStore();
 
   // ── Collaboration state ──
   const [collabMode, setCollabMode] = useState(false);
@@ -637,8 +637,6 @@ const ScreenplayEditor: React.FC = () => {
 
   // ── Drag-and-drop file import state ──
   const [dragOverEditor, setDragOverEditor] = useState(false);
-  const [pendingDropFile, setPendingDropFile] = useState<File | null>(null);
-  const [dropConfirmOpen, setDropConfirmOpen] = useState(false);
 
   // Element picker state. `availableTypes`, when set, restricts the picker to
   // that exact list — used inside AV cells, where the list is whatever the
@@ -2756,14 +2754,6 @@ const ScreenplayEditor: React.FC = () => {
 
   // ── Drag-and-drop file import ─────────────────────────────────────────
 
-  const hasUnsavedChanges = useCallback((): boolean => {
-    if (!editor || !currentProject || !currentScriptId) return false;
-    const content = buildSaveContent();
-    if (!content) return false;
-    const json = JSON.stringify(content);
-    return json !== lastSavedJsonRef.current && lastSavedJsonRef.current !== '';
-  }, [editor, currentProject, currentScriptId, buildSaveContent]);
-
   const importDroppedFile = useCallback(async (file: File) => {
     if (!editor) return;
     try {
@@ -2814,54 +2804,13 @@ const ScreenplayEditor: React.FC = () => {
       return;
     }
 
-    if (hasUnsavedChanges()) {
-      setPendingDropFile(file);
-      setDropConfirmOpen(true);
-    } else {
-      importDroppedFile(file);
-    }
-  }, [hasUnsavedChanges, importDroppedFile]);
-
-  const handleDropConfirmSave = useCallback(async () => {
-    // Save current content first, then import
-    if (editor && currentProject && currentScriptId) {
-      const content = buildSaveContent();
-      if (content) {
-        try {
-          await scriptApi.saveScript(currentProject.id, currentScriptId, { content });
-          lastSavedJsonRef.current = JSON.stringify(content);
-        } catch (err) {
-          if (!(err as any)?.handled) {
-            showToast(`Save failed: ${err instanceof Error ? err.message : String(err)}`, 'error');
-          }
-        }
-      }
-    }
-    setDropConfirmOpen(false);
-    if (pendingDropFile) {
-      importDroppedFile(pendingDropFile);
-      setPendingDropFile(null);
-    }
-  }, [editor, currentProject, currentScriptId, buildSaveContent, pendingDropFile, importDroppedFile]);
-
-  const handleDropConfirmDiscard = useCallback(() => {
-    setDropConfirmOpen(false);
-    if (pendingDropFile) {
-      importDroppedFile(pendingDropFile);
-      setPendingDropFile(null);
-    }
-  }, [pendingDropFile, importDroppedFile]);
-
-  const handleDropConfirmCancel = useCallback(() => {
-    setDropConfirmOpen(false);
-    setPendingDropFile(null);
-  }, []);
+    confirmBeforeReplacing(() => importDroppedFile(file));
+  }, [importDroppedFile]);
 
   // ── Tauri native drag-and-drop handler ──
   // On desktop Tauri, the webview intercepts OS file drops at the native level,
   // so the browser's drop event may not include the actual files. We listen for
   // Tauri's onDragDropEvent which provides file paths directly.
-  const pendingDropPathRef = useRef<string | null>(null);
   useEffect(() => {
     if (!editor) return;
     let cancelled = false;
@@ -2932,13 +2881,7 @@ const ScreenplayEditor: React.FC = () => {
                   file = new File([text], filename, { type: 'text/plain' });
                 }
 
-                if (hasUnsavedChanges()) {
-                  pendingDropPathRef.current = path;
-                  setPendingDropFile(file);
-                  setDropConfirmOpen(true);
-                } else {
-                  importDroppedFile(file);
-                }
+                confirmBeforeReplacing(() => importDroppedFile(file));
               } catch (err) {
                 console.error('Failed to read dropped file:', err);
                 showToast(`Failed to read file: ${err instanceof Error ? err.message : String(err)}`, 'error');
@@ -2962,7 +2905,7 @@ const ScreenplayEditor: React.FC = () => {
       cancelled = true;
       unlistenFn?.();
     };
-  }, [editor, hasUnsavedChanges, importDroppedFile]);
+  }, [editor, importDroppedFile]);
 
 
 
@@ -3295,32 +3238,12 @@ const ScreenplayEditor: React.FC = () => {
           </button>
         </div>
       )}
-      {saveStatus === 'error' && currentProject && currentScriptId && (
+      {saveStatus === 'error' && (
         <div className="save-failure-banner">
           <span className="save-failure-icon">&#9888;</span>
           <span className="save-failure-text">
-            Auto-save failed{saveError ? `: ${saveError}` : ''}. Your changes may not be saved.
+            Auto-save failed{saveError ? `: ${saveError}` : ''}. Your changes may not be saved. Press Ctrl+S to try again.
           </span>
-          <button className="save-failure-btn" onClick={() => {
-            const content = buildSaveContent();
-            if (!content || !currentProject || !currentScriptId) return;
-            setSaveStatus('saving');
-            scriptApi.saveScript(currentProject.id, currentScriptId, { content }).then(() => {
-              lastSavedJsonRef.current = JSON.stringify(content);
-              setSaveStatus('saved');
-              showToast('Saved successfully', 'success');
-            }).catch((err) => {
-              const msg = err instanceof Error ? err.message : String(err);
-              setSaveStatus('error', msg);
-            });
-          }}>
-            Retry
-          </button>
-          <button className="save-failure-btn" onClick={() => {
-            useEditorStore.getState().setSaveAsOpen(true);
-          }}>
-            Save As
-          </button>
           <button className="save-failure-btn" onClick={() => {
             // Goes through downloadWritea so the file gets the .writea envelope
             // and WriTea Draft can actually reopen it. The previous version wrote a
@@ -3340,8 +3263,8 @@ const ScreenplayEditor: React.FC = () => {
               content,
               {
                 backupKind: 'crash',
-                projectId: currentProject?.id ?? null,
-                scriptId: currentScriptId ?? null,
+                projectId: null,
+                scriptId: null,
               },
             ).then(() => showToast('Backup exported', 'success'))
               .catch((err) => showToast(
@@ -3733,23 +3656,6 @@ const ScreenplayEditor: React.FC = () => {
             color: 'var(--fd-text)',
           }}>
             Drop screenplay file to open
-          </div>
-        </div>
-      )}
-      {dropConfirmOpen && (
-        <div className="dialog-overlay" onClick={handleDropConfirmCancel}>
-          <div className="dialog-box" onClick={(e) => e.stopPropagation()}>
-            <div className="dialog-header">Unsaved Changes</div>
-            <div className="dialog-body">
-              <p style={{ margin: 0, fontSize: 14, color: 'var(--fd-text)' }}>
-                You have unsaved changes. Would you like to save before opening the new file?
-              </p>
-            </div>
-            <div className="dialog-actions">
-              <button onClick={handleDropConfirmCancel}>Cancel</button>
-              <button onClick={handleDropConfirmDiscard}>Discard</button>
-              <button className="dialog-primary" onClick={handleDropConfirmSave}>Save &amp; Open</button>
-            </div>
           </div>
         </div>
       )}

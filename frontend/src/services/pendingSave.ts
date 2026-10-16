@@ -86,3 +86,28 @@ export async function leaveEditor(go: () => void): Promise<void> {
   await flushPendingSave();
   go();
 }
+
+/**
+ * Decides whether an action that replaces the open document may go ahead.
+ * Registered by the menu bar, which owns the unsaved-changes dialog.
+ */
+type ReplaceGuard = (action: () => void) => void;
+
+let replaceGuard: ReplaceGuard | null = null;
+
+export function setReplaceGuard(fn: ReplaceGuard): () => void {
+  replaceGuard = fn;
+  return () => {
+    if (replaceGuard === fn) replaceGuard = null;
+  };
+}
+
+/**
+ * Run an action that replaces the open document (a dropped file, say), after
+ * the same "save your changes first?" question File > Open asks. With no
+ * menu bar mounted there is nobody to ask, so it simply runs.
+ */
+export function confirmBeforeReplacing(action: () => void): void {
+  if (replaceGuard) replaceGuard(action);
+  else action();
+}
