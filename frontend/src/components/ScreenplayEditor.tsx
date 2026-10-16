@@ -103,7 +103,6 @@ import { matchesShortcut } from '../utils/shortcuts';
 import { SpellCheck, spellCheckPluginKey } from '../editor/extensions/SpellCheck';
 import { Grammar, grammarPluginKey } from '../editor/extensions/Grammar';
 import { spellChecker } from '../editor/spellchecker';
-import { grammarIgnore } from '../editor/grammar/grammarIgnore';
 import { buildSaveContent as buildSaveContentShared, stripSaveMetadata } from '../utils/saveContent';
 import { hydrateEditorStoresFromContent } from '../utils/hydrateStores';
 import { FdxFidelity } from '../editor/extensions/FdxFidelity';
@@ -127,7 +126,6 @@ import {
   hasRecoverableSnapshot,
   type RecoverySnapshot,
 } from '../services/recoveryService';
-import { readLastSession, rememberLastSession } from '../services/lastSession';
 import { useBackupStatusStore } from '../stores/backupStatusStore';
 import { runRetext, RETEXT_CATEGORIES, type RetextCategory } from '../editor/grammar/retextProvider';
 import { runHarper } from '../editor/grammar/harperProvider';
@@ -1961,7 +1959,6 @@ const ScreenplayEditor: React.FC = () => {
   // it has content. Starting at `false` left that window unguarded — the only
   // thing that stopped the blank body being written was the storage-layer guard
   // throwing, which surfaced as a save-error modal.
-  const lastSavedNonEmptyRef = useRef<boolean>(false);
 
   // Guard: suppress auto-save while switching scripts.  During the switch the
   // store metadata is cleared (0 relationships, 0 profiles, etc.) but the
@@ -2252,14 +2249,14 @@ const ScreenplayEditor: React.FC = () => {
         if (!docHasAnyText(doc)) return;
         stashSessionDoc({
           doc,
-          projectId: currentProject?.id ?? null,
-          scriptId: currentScriptId ?? null,
+          projectId: null,
+          scriptId: null,
         });
       } catch (err) {
         console.warn('Could not stash the open document:', err);
       }
     };
-  }, [editor, collabMode, isHistoryMode, currentProject, currentScriptId]);
+  }, [editor, collabMode, isHistoryMode]);
 
   // Put it back on the way in. Skipped when the URL carries script ids — that
   // load path owns the content and reads the saved version, which is newer than
@@ -2276,7 +2273,7 @@ const ScreenplayEditor: React.FC = () => {
     sessionRestoreDoneRef.current = true;
     if (urlScriptId || urlCommitHash) return;
 
-    const doc = takeSessionDoc(currentProject?.id ?? null, currentScriptId ?? null);
+    const doc = takeSessionDoc(null, null);
     if (!doc) return;
     try {
       editor.commands.setContent(doc as Record<string, unknown>, false);
@@ -2287,64 +2284,13 @@ const ScreenplayEditor: React.FC = () => {
       console.error('Could not restore the open document:', err);
       showToast('Could not restore the document you had open', 'error');
     }
-  }, [editor, collabMode, isHistoryMode, urlScriptId, urlCommitHash, currentProject, currentScriptId, updateScenes]);
-
-  // Reopen the script this window had open when the app last ran.
-  //
-  // The recovery snapshot returns unsaved *changes*; this returns the document
-  // they belong to. Without it a crash dropped the writer into a blank Untitled
-  // even when their script was safe in the library, which is indistinguishable
-  // from having lost the lot (issue #68).
-  //
-  // Mount-time only, and it defers to everything more specific: a URL that names
-  // a script, a script already open, a document restored from the in-memory
-  // stash. It only ever navigates to a library script — an unsaved document has
-  // no identity to reopen, and a file opened from disk needs a bookmark this
-  // cannot re-acquire on the writer's behalf.
-  const lastSessionRestoreRef = useRef(false);
-  useEffect(() => {
-    if (!editor || collabMode || isHistoryMode) return;
-    if (lastSessionRestoreRef.current) return;
-    lastSessionRestoreRef.current = true;
-    if (urlScriptId || urlCommitHash || currentScriptId) return;
-    // A project with no script is a new screenplay being started in it
-    // (Project ▸ New Document). The store starts empty on launch, so this never
-    // holds there; reopening the last script here would put the blank page the
-    // format prompt is about to create on top of that script, and the first
-    // auto-save would write it over the script.
-    if (currentProject) return;
-    if (useEditorStore.getState().documentOrigin) return;
-
-    const last = readLastSession();
-    if (!last) return;
-    setShowWelcome(false);
-    navigate(`/project/${last.projectId}/edit/${last.scriptId}`, { replace: true });
-  }, [editor, collabMode, isHistoryMode, urlScriptId, urlCommitHash, currentScriptId, currentProject, navigate]);
-
-  // Keep that record current. Cleared for anything without a library identity,
-  // so closing a script or starting a blank one does not leave the last script
-  // queued to reappear on the next launch.
-  //
-  // The clear waits until this window has actually had a script open. On mount
-  // there is none yet — the restore above has only just asked for one — and
-  // erasing the record there would throw away the very thing being restored if
-  // the app died before the load finished.
-  const hasOpenedScriptRef = useRef(false);
-  useEffect(() => {
-    if (collabMode || isHistoryMode) return;
-    if (currentProject && currentScriptId) {
-      hasOpenedScriptRef.current = true;
-      rememberLastSession(currentProject.id, currentScriptId);
-      return;
-    }
-    if (hasOpenedScriptRef.current) rememberLastSession(null, null);
-  }, [currentProject, currentScriptId, collabMode, isHistoryMode]);
+  }, [editor, collabMode, isHistoryMode, urlScriptId, urlCommitHash, updateScenes]);
 
   // --- Load script from URL params ---
   // Reset the guard when the editor instance changes so we reload
   // content if TipTap recreates the editor.
   const loadedScriptRef = useRef<string | null>(null);
-  const [historyVersionLabel, setHistoryVersionLabel] = useState('');
+  const [historyVersionLabel] = useState('');
   useEffect(() => {
     // Allow re-load for new editor instance, but NOT during collab —
     // switchCollabDocument already handles content seeding via collabInitialContent.
@@ -2360,242 +2306,6 @@ const ScreenplayEditor: React.FC = () => {
       loadedScriptRef.current = null;
     }
   }, [scriptReloadKey]);
-  useEffect(() => {
-    if (!editor || !urlProjectId || !urlScriptId) return;
-    const loadKey = `${urlProjectId}/${urlScriptId}${urlCommitHash ? `@${urlCommitHash}` : ''}`;
-    // Avoid reloading the same script
-    if (loadedScriptRef.current === loadKey) return;
-
-    // Capture the previous load key BEFORE overwriting it. A null value here
-    // means this is the first load in this mount — there is nothing to flush
-    // (the editor only holds its default empty content, which would overwrite
-    // the stored script if saved).
-    const prevLoadKey = loadedScriptRef.current;
-    loadedScriptRef.current = loadKey;
-    clearTrackChanges();
-    scriptSwitchingRef.current = true;
-    (async () => {
-      try {
-        // Flush unsaved changes to the CURRENT script before switching so
-        // metadata (character profiles, relationships, etc.) is not lost.
-        // Only do this if we actually loaded a prior script in this mount —
-        // otherwise the "pending" content is just the editor's default empty
-        // state and would clobber a stored screenplay.
-        // With auto-save off the writer was already asked on the way here,
-        // and "Discard" has to mean discard.
-        if (prevLoadKey && currentProject && currentScriptId && autoSaveAppliesToOpenDocument(useSettingsStore.getState(), false)) {
-          const pendingContent = buildSaveContent();
-          if (pendingContent) {
-            const pendingJson = JSON.stringify(pendingContent);
-            if (pendingJson !== lastSavedJsonRef.current) {
-              lastSavedJsonRef.current = pendingJson;
-              try { await scriptApi.saveScript(currentProject.id, currentScriptId, { content: pendingContent }); } catch {}
-            }
-          }
-        }
-
-        const project = await projectApi.getProject(urlProjectId);
-        setCurrentProject(project);
-        setCurrentScriptId(isHistoryMode ? null : urlScriptId);
-        // Loading a project-backed script means we're no longer editing an
-        // imported standalone file — drop the source-file notice.
-        useEditorStore.getState().setImportedSource(null);
-
-        let scriptResp;
-        if (isHistoryMode && urlCommitHash) {
-          scriptResp = await api.getScriptAtVersion(urlProjectId, urlCommitHash, urlScriptId);
-          setHistoryVersionLabel(urlCommitHash.slice(0, 7));
-        } else {
-          const linkedPath = await syncLinkedFileBeforeOpen(urlProjectId, urlScriptId);
-          useLinkedFileStore.getState().setOpenScriptFile(
-            linkedPath ? { scriptId: urlScriptId, path: linkedPath } : null,
-          );
-          scriptResp = await scriptApi.getScript(urlProjectId, urlScriptId);
-        }
-        const content = scriptResp.content as Record<string, unknown> | null;
-
-        // Strip app metadata keys before feeding to ProseMirror
-        let pmDoc: Record<string, unknown> | null = null;
-        if (content && typeof content === 'object' && 'type' in content && content.type === 'doc') {
-          pmDoc = stripSaveMetadata(content).pmDoc;
-        }
-        // Before setContent: the load must not be marked as a revision by the
-        // document that was open before it still being in Revision Mode.
-        restoreRevisionState(isHistoryMode ? null : content);
-
-        try {
-          if (pmDoc && Array.isArray(pmDoc.content) && pmDoc.content.length > 0) {
-            editor.commands.setContent(pmDoc);
-          } else if (content && typeof content === 'object' && Object.keys(content).length > 0) {
-            editor.commands.setContent(content);
-          } else {
-            editor.commands.setContent({ type: 'doc', content: [{ type: 'sceneHeading', content: [] }] });
-          }
-        } catch (setErr) {
-          console.error('setContent failed:', setErr);
-          showToast(`Failed to render content: ${setErr instanceof Error ? setErr.message : String(setErr)}`, 'error');
-          editor.commands.setContent({ type: 'doc', content: [{ type: 'sceneHeading', content: [] }] });
-        }
-        clearEditorHistory(editor);
-
-        // Record whether this script holds real content, so a later editor reset
-        // to an empty body cannot silently overwrite it (data-loss guard).
-        lastSavedNonEmptyRef.current = docHasAnyText(pmDoc ?? content);
-
-        // Restore metadata from top-level content keys (skip in history mode)
-        if (!isHistoryMode) {
-          const store = useEditorStore.getState();
-          // Clear per-screenplay metadata so we don't carry over from a previously opened screenplay
-          store.setCharacterProfiles([]);
-          store.setCharacterRelationships([]);
-          store.setNotes([]);
-          store.setGeneralNotes([]);
-          store.setTags([]);
-          store.setTagCategories([...DEFAULT_TAG_CATEGORIES]);
-          store.setBeats([]);
-          store.setBeatColumns([]);
-          useAssetStore.getState().setAssets([]);
-          useVersionStore.getState().setVersions([]);
-          useLocationStore.getState().setLocations([]);
-          store.setPageLayout({ ...DEFAULT_PAGE_LAYOUT });
-          // Pacing and genres; a script without them opens as Standard.
-          store.setScriptProfile(normalizeScriptProfile((content as Record<string, unknown> | null | undefined)?._scriptProfile));
-          const parseAttr = (val: unknown): unknown[] => {
-            if (typeof val === 'string') { try { const p = JSON.parse(val); return Array.isArray(p) ? p : []; } catch { return []; } }
-            if (Array.isArray(val)) return val;
-            return [];
-          };
-          if (content) {
-            const c = content as Record<string, unknown>;
-            const notes = parseAttr(c._notes);
-            if (notes.length > 0) store.setNotes(notes as import('../stores/editorStore').NoteInfo[]);
-            const gNotes = parseAttr(c._generalNotes);
-            if (gNotes.length > 0) store.setGeneralNotes(gNotes as import('../stores/editorStore').GeneralNote[]);
-            const tagsArr = parseAttr(c._tags);
-            if (tagsArr.length > 0) store.setTags(tagsArr as import('../stores/editorStore').TagItem[]);
-            const tagCats = parseAttr(c._tagCategories);
-            if (tagCats.length > 0) store.setTagCategories(tagCats as import('../stores/editorStore').TagCategory[]);
-            const profiles = parseAttr(c._characterProfiles);
-            if (profiles.length > 0) {
-              for (const prof of profiles as Record<string, unknown>[]) {
-                if (prof.name && typeof prof.name === 'string') {
-                  store.upsertCharacterProfile(prof.name, savedProfileFields(prof));
-                }
-              }
-            }
-            const rels = parseAttr(c._characterRelationships);
-            if (rels.length > 0) {
-              store.setCharacterRelationships(rels as import('../stores/editorStore').CharacterRelationship[]);
-            }
-            const beatsArr = parseAttr(c._beats);
-            store.setBeats(beatsArr as import('../stores/editorStore').BeatInfo[]);
-            const beatColsArr = parseAttr(c._beatColumns);
-            store.setBeatColumns(beatColsArr as import('../stores/editorStore').BeatColumn[]);
-            if (c._beatArrangeMode === 'auto' || c._beatArrangeMode === 'custom') {
-              store.setBeatArrangeMode(c._beatArrangeMode);
-            }
-            // Restore scene numbering state
-            if (typeof c._sceneNumbersVisible === 'boolean') {
-              store.setSceneNumbersVisible(c._sceneNumbersVisible);
-            }
-            if (typeof c._sceneNumbersLocked === 'boolean') {
-              store.setSceneNumbersLocked(c._sceneNumbersLocked);
-            }
-            store.setFdxRaw(c._fdxRaw && typeof c._fdxRaw === 'object' && (c._fdxRaw as { sections?: unknown }).sections
-              ? (c._fdxRaw as import('../utils/fdxPreserve').FdxRaw) : null);
-            // Restore per-document formatting template
-            if (c._templateId && typeof c._templateId === 'string') {
-              useFormattingTemplateStore.getState().setActiveTemplateId(c._templateId);
-            } else {
-              useFormattingTemplateStore.getState().setActiveTemplateId(null);
-            }
-            // Restore per-document ignored words for spell check
-            const ignoredArr = parseAttr(c._ignoredWords);
-            spellChecker.setIgnoredWords(ignoredArr as string[]);
-            const ignoredOnceArr = parseAttr(c._ignoredOnce);
-            spellChecker.setIgnoredOnce(ignoredOnceArr as string[]);
-            // Project dictionary: words live on the Project entity. Merge with
-            // any legacy per-script `_customDictWords` so we don't lose words
-            // saved by older clients (the script copy is dropped on next save).
-            const scriptDictWords = (parseAttr(c._customDictWords) as string[]).map((s) => String(s));
-            const projDictWords = ((project.properties?.dictionary_words ?? []) as string[]).map((s) => String(s));
-            const mergedSet = new Set<string>();
-            for (const w of projDictWords) if (typeof w === 'string') mergedSet.add(w.toLowerCase());
-            for (const w of scriptDictWords) if (typeof w === 'string') mergedSet.add(w.toLowerCase());
-            const merged = [...mergedSet].sort();
-            spellChecker.setProjectWords(merged);
-            // If the script carried words the project didn't have, write the
-            // merged set back to the project so the migration sticks.
-            const needsMigration =
-              scriptDictWords.length > 0 &&
-              JSON.stringify(merged) !== JSON.stringify([...projDictWords].sort());
-            if (needsMigration) {
-              try {
-                const updated = await projectApi.updateProject(project.id, {
-                  properties: { ...project.properties, dictionary_words: merged } as any,
-                });
-                setCurrentProject(updated);
-              } catch (err) {
-                console.warn('Project dictionary migration save failed', err);
-              }
-            }
-            if (c._enabledGlobalDicts === undefined) {
-              // Legacy script (saved before this feature) — auto-enable "Personal"
-              // if it exists, so users who had the old global custom dictionary keep
-              // those words recognized.
-              const lib = useEditorStore.getState().customDictionaries;
-              spellChecker.setEnabledGlobalDicts(lib['Personal'] ? ['Personal'] : []);
-            } else {
-              const enabledGlobals = parseAttr(c._enabledGlobalDicts);
-              spellChecker.setEnabledGlobalDicts(enabledGlobals as string[]);
-            }
-            // Per-script project-dictionary toggle. Default to enabled (back-compat).
-            spellChecker.setProjectDictionaryEnabled(
-              typeof c._projectDictEnabled === 'boolean' ? c._projectDictEnabled : true,
-            );
-            // Restore per-document ignored grammar rules / occurrences
-            const grammarRules = parseAttr(c._ignoredGrammarRules);
-            grammarIgnore.setIgnoredRules(grammarRules as string[]);
-            const grammarOnce = parseAttr(c._ignoredGrammarOnce);
-            grammarIgnore.setIgnoredOnce(grammarOnce as string[]);
-            // Restore the per-document grammar check toggle (default off).
-            // Spell check is app-wide and is not stored in the script.
-            store.setGrammarCheckEnabled(c._grammarCheckEnabled === true);
-            // Restore per-document page layout (header/footer, margins)
-            if (c._pageLayout && typeof c._pageLayout === 'object') {
-              store.setPageLayout({ ...DEFAULT_PAGE_LAYOUT, ...(c._pageLayout as Record<string, unknown>) });
-            }
-            // Scene-heading spacing: a script written before the two-line
-            // standard opens on the spacing it was composed against, and is
-            // offered the change once (issue #76).
-            store.setSceneHeadingSpaceBefore(resolveSceneHeadingSpaceBefore(c));
-            setSceneSpacingPrompt(predatesStandardSceneSpacing(c));
-          }
-        }
-
-        setDocumentTitle(scriptResp.meta.title);
-        useEditorStore.getState().setSaveStatus('idle');
-        lastSavedJsonRef.current = '';
-        requestAnimationFrame(() => updateScenes());
-        // Snapshot the script we just opened; see handleOpenFile. History mode
-        // is read-only and must never write a backup of an old version.
-        if (!isHistoryMode) useBackupStatusStore.getState().noteDocumentOpened();
-      } catch (err) {
-        console.error('Failed to load script:', err);
-        const errMsg = err instanceof Error ? err.message : String(err);
-        // If the script doesn't exist (404), redirect to the project view
-        if (errMsg.includes('404') && urlProjectId) {
-          showToast('Script not found. It may have been removed by a version restore.', 'error');
-          navigate(`/project/${urlProjectId}`, { replace: true });
-        } else {
-          showToast(`Failed to load script: ${errMsg}`, 'error');
-        }
-      } finally {
-        scriptSwitchingRef.current = false;
-      }
-    })();
-  }, [editor, urlProjectId, urlScriptId, urlCommitHash, isHistoryMode, collabMode, liveMode, collabUserName, currentScriptId, setCurrentProject, setCurrentScriptId, setDocumentTitle, updateScenes, scriptReloadKey, navigate, buildSaveContent]);
-
   // --- Sync orphaned marks: runs ONCE after editor is ready, not on every doc change ---
   const orphanSyncDone = useRef(false);
   useEffect(() => {
