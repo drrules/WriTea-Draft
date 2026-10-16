@@ -120,13 +120,11 @@ import { useBackupStatusStore } from '../stores/backupStatusStore';
 import { runRetext, RETEXT_CATEGORIES, type RetextCategory } from '../editor/grammar/retextProvider';
 import { runHarper } from '../editor/grammar/harperProvider';
 import { clearEditorHistory, hasEditsSinceLoad } from '../editor/clearHistory';
-import { useProjectStore } from '../stores/projectStore';
 import { confirmBeforeReplacing } from '../services/pendingSave';
 import { showToast } from './Toast';
 import VersionHistory from './VersionHistory';
 import AssetManager from './AssetManager';
-import { useParams, useNavigate } from 'react-router-dom';
-import { useGoBack, useGoBackTo } from '../hooks/useGoBack';
+import { useNavigate } from 'react-router-dom';
 import WelcomeDialog, { type WelcomeChoice } from './WelcomeDialog';
 import { downloadWritea } from '../utils/writeaFormat';
 import { pasteAsFountain } from '../utils/pasteFountain';
@@ -315,20 +313,7 @@ interface OverlayInfo {
 
 
 const ScreenplayEditor: React.FC = () => {
-  const { projectId: urlProjectId, scriptId: urlScriptId, commitHash: urlCommitHash } = useParams<{ projectId?: string; scriptId?: string; commitHash?: string }>();
   const navigate = useNavigate();
-  const goBack = useGoBack();
-  const isHistoryMode = Boolean(urlCommitHash);
-  // Read by the revision plugin, which lives as long as the editor does —
-  // longer than any one render's isHistoryMode.
-  const isHistoryModeRef = useRef(isHistoryMode);
-  isHistoryModeRef.current = isHistoryMode;
-  // Leaving read-only history mode unwinds to the editor entry it was opened
-  // from; pushing a second one instead left the version sitting on the stack
-  // for the next Back press to walk into (issue #66).
-  const leaveHistoryMode = useGoBackTo(
-    urlProjectId && urlScriptId ? `/project/${urlProjectId}/edit/${urlScriptId}` : '/',
-  );
 
   const {
     setActiveElement, setScenes, setPageCount, setCurrentPage,
@@ -346,7 +331,6 @@ const ScreenplayEditor: React.FC = () => {
     saveStatus, saveError, setSaveStatus,
   } = useEditorStore();
 
-  const { scriptReloadKey } = useProjectStore();
 
   // ── Collaboration state ──
   const [collabMode, setCollabMode] = useState(false);
@@ -632,7 +616,7 @@ const ScreenplayEditor: React.FC = () => {
 
   // Welcome dialog — show on first visit
   const [showWelcome, setShowWelcome] = useState(() => {
-    return !localStorage.getItem('writeadraft:welcomed') && !urlScriptId;
+    return !localStorage.getItem('writeadraft:welcomed');
   });
 
   // ── Drag-and-drop file import state ──
@@ -1237,7 +1221,6 @@ const ScreenplayEditor: React.FC = () => {
       RevisionMark.configure({
         // A checked-in draft is read-only: draw its revisions, add none.
         getConfig: () => {
-          if (isHistoryModeRef.current) return null;
           const st = useEditorStore.getState();
           return { enabled: st.revisionMode, color: st.revisionColor };
         },
@@ -1252,7 +1235,7 @@ const ScreenplayEditor: React.FC = () => {
       ContdCaseExtension,
       SearchExtension,
       TrackChangesExtension,
-      ...(isHistoryMode ? [] : [EnforceGuardExtension, EnterHandlerExtension, TabHandlerExtension, ElementShortcutExtension, PasteFountainExtension]),
+      EnforceGuardExtension, EnterHandlerExtension, TabHandlerExtension, ElementShortcutExtension, PasteFountainExtension,
       SpellCheck,
       Grammar,
       ...pluginRegistry.getEditorExtensions(),
@@ -1261,11 +1244,11 @@ const ScreenplayEditor: React.FC = () => {
     // For normal editing from URL, content is loaded later via useEffect.
     content: collabMode
       ? (collabInitialContent.current || { type: 'doc', content: [{ type: 'sceneHeading', content: [] }] })
-      : (urlScriptId || urlCommitHash) ? undefined : { type: 'doc', content: [{ type: 'sceneHeading', content: [] }] },
+      : { type: 'doc', content: [{ type: 'sceneHeading', content: [] }] },
     autofocus: 'start',
-    editable: !isHistoryMode && !(collabMode && collabRole === 'viewer'),
+    editable: !(collabMode && collabRole === 'viewer'),
     editorProps: {
-      attributes: { class: `screenplay-content${isHistoryMode ? ' history-readonly' : ''}`, spellcheck: 'false' },
+      attributes: { class: 'screenplay-content', spellcheck: 'false' },
       // A script note paints itself with an inline background, and the pasted
       // highlight rule matches any element carrying one — so pasting a noted
       // passage back used to lay a second highlight over it. See
@@ -1514,7 +1497,7 @@ const ScreenplayEditor: React.FC = () => {
         totalPages={hfTotalPrinted}
         docTitle={hfDocTitle}
         revisionColor={hfRevColor}
-        editable={!isHistoryMode && collabRole !== 'viewer'}
+        editable={collabRole !== 'viewer'}
         editing={editingBand?.kind === kind && editingBand.page === printedPage}
         onStartEdit={() => setEditingBand({ kind, page: printedPage })}
         onCommit={(next) => commitBand(kind, next)}
@@ -1531,7 +1514,7 @@ const ScreenplayEditor: React.FC = () => {
     ),
     [
       headerFooter.headerContent, headerFooter.footerContent, hfTotalPrinted,
-      hfDocTitle, hfRevColor, isHistoryMode, collabRole, editingBand,
+      hfDocTitle, hfRevColor, collabRole, editingBand,
       commitBand, openHeaderFooterSettings,
       pageLayout.headerMargin, pageLayout.footerMargin,
     ],
@@ -1898,7 +1881,7 @@ const ScreenplayEditor: React.FC = () => {
     projectTitle: undefined,
     scriptSwitchingRef,
     isCollabGuest,
-    isHistoryMode,
+    isHistoryMode: false,
   });
 
   /**
@@ -1970,7 +1953,7 @@ const ScreenplayEditor: React.FC = () => {
     scriptId: null,
     originPath: documentOriginPath,
     documentTitle: backupDocumentTitle,
-    ready: !!editor && !isHistoryMode,
+    ready: !!editor,
   });
 
   /**
@@ -2087,7 +2070,7 @@ const ScreenplayEditor: React.FC = () => {
     lastSavedJsonRef,
     scriptSwitchingRef,
     isCollabGuest,
-    isHistoryMode,
+    isHistoryMode: false,
     isPaused: recoveryPromptOpen || recoveryPending,
     hasEdits: () => (editor ? hasEditsSinceLoad(editor) : false),
   });
@@ -2153,7 +2136,7 @@ const ScreenplayEditor: React.FC = () => {
   // come back blank. TipTap schedules the destroy a tick after unmount, so the
   // document is still readable from this cleanup.
   useEffect(() => {
-    if (!editor || collabMode || isHistoryMode) return;
+    if (!editor || collabMode) return;
     return () => {
       if (editor.isDestroyed) return;
       try {
@@ -2170,7 +2153,7 @@ const ScreenplayEditor: React.FC = () => {
         console.warn('Could not stash the open document:', err);
       }
     };
-  }, [editor, collabMode, isHistoryMode]);
+  }, [editor, collabMode]);
 
   // Put it back on the way in. Skipped when the URL carries script ids — that
   // load path owns the content and reads the saved version, which is newer than
@@ -2182,10 +2165,9 @@ const ScreenplayEditor: React.FC = () => {
   // script that has since been loaded from the library.
   const sessionRestoreDoneRef = useRef(false);
   useEffect(() => {
-    if (!editor || collabMode || isHistoryMode) return;
+    if (!editor || collabMode) return;
     if (sessionRestoreDoneRef.current) return;
     sessionRestoreDoneRef.current = true;
-    if (urlScriptId || urlCommitHash) return;
 
     const doc = takeSessionDoc(null, null);
     if (!doc) return;
@@ -2198,28 +2180,8 @@ const ScreenplayEditor: React.FC = () => {
       console.error('Could not restore the open document:', err);
       showToast('Could not restore the document you had open', 'error');
     }
-  }, [editor, collabMode, isHistoryMode, urlScriptId, urlCommitHash, updateScenes]);
+  }, [editor, collabMode, updateScenes]);
 
-  // --- Load script from URL params ---
-  // Reset the guard when the editor instance changes so we reload
-  // content if TipTap recreates the editor.
-  const loadedScriptRef = useRef<string | null>(null);
-  const [historyVersionLabel] = useState('');
-  useEffect(() => {
-    // Allow re-load for new editor instance, but NOT during collab —
-    // switchCollabDocument already handles content seeding via collabInitialContent.
-    // Resetting the guard during collab caused the normal load path to run and
-    // create duplicate setupCollab calls with different nonces.
-    if (editor && !collabMode) {
-      loadedScriptRef.current = null;
-    }
-  }, [editor, collabMode]);
-  // Reset load guard when a version is restored so the editor refetches the content
-  useEffect(() => {
-    if (scriptReloadKey > 0) {
-      loadedScriptRef.current = null;
-    }
-  }, [scriptReloadKey]);
   // --- Sync orphaned marks: runs ONCE after editor is ready, not on every doc change ---
   const orphanSyncDone = useRef(false);
   useEffect(() => {
@@ -3162,21 +3124,7 @@ const ScreenplayEditor: React.FC = () => {
   // Show loading screen while collab session is being set up
 
   return (
-    <div className={`app-container${isHistoryMode ? ' history-mode' : ''}`}>
-      {isHistoryMode && (
-        <div className="history-banner">
-          <span className="history-banner-icon">&#128337;</span>
-          <span className="history-banner-text">
-            Viewing version <strong>{historyVersionLabel}</strong> — Read Only
-          </span>
-          <button
-            className="history-banner-back"
-            onClick={urlProjectId && urlScriptId ? leaveHistoryMode : goBack}
-          >
-            Back to Current Version
-          </button>
-        </div>
-      )}
+    <div className="app-container">
       {collabMode && (
         <div className="collab-banner">
           <span className={`collab-dot${collabConnectionState === 'disconnected' ? ' collab-dot-disconnected' : collabConnectionState === 'connecting' || collabConnectionState === 'connected' ? ' collab-dot-connecting' : ''}`} />
@@ -3287,18 +3235,18 @@ const ScreenplayEditor: React.FC = () => {
           onCancel={() => endLive()}
         />
       )}
-      {!isHistoryMode && <MenuBar editor={editor} onDocumentSaved={(json) => { lastSavedJsonRef.current = json; }} onLiveHost={() => setLiveDialog('host')} onLiveJoin={() => setLiveDialog('join')} onLiveEnd={handleStopLive} liveActive={liveMode} isCollabActive={collabMode} isCollabGuest={collabMode && !isCollabHost} />}
-      {!isHistoryMode && <Toolbar editor={editor} />}
+      <MenuBar editor={editor} onDocumentSaved={(json) => { lastSavedJsonRef.current = json; }} onLiveHost={() => setLiveDialog('host')} onLiveJoin={() => setLiveDialog('join')} onLiveEnd={handleStopLive} liveActive={liveMode} isCollabActive={collabMode} isCollabGuest={collabMode && !isCollabHost} />
+      <Toolbar editor={editor} />
       <div className="editor-layout">
-        {!isHistoryMode && <SceneNavigator editor={editor} scrollContainer={editorMainRef.current} style={{ width: navWidth, minWidth: navWidth }} />}
-        {!isHistoryMode && navigatorOpen && (
+        <SceneNavigator editor={editor} scrollContainer={editorMainRef.current} style={{ width: navWidth, minWidth: navWidth }} />
+        {navigatorOpen && (
           <div className="panel-resize-handle" onPointerDown={(e) => handleResizePointerDown('left', e)} style={{ touchAction: 'none' }} />
         )}
         <div className="editor-center">
-          {!isHistoryMode && <IndexCards editor={editor} scrollContainer={editorMainRef.current} />}
-          {!isHistoryMode && statisticsOpen && editor ? (
+          <IndexCards editor={editor} scrollContainer={editorMainRef.current} />
+          {statisticsOpen && editor ? (
             <ScriptStatistics editor={editor} />
-          ) : !isHistoryMode && beatBoardOpen ? (
+          ) : beatBoardOpen ? (
             <BeatBoard />
           ) : (
             <div className="editor-main" ref={editorMainRef} onDragOver={handleEditorDragOver} onDragLeave={handleEditorDragLeave} onDrop={handleEditorDrop}>
@@ -3328,7 +3276,7 @@ const ScreenplayEditor: React.FC = () => {
                 }}
               >
                 <div
-                  className={`page${!tagsVisible ? ' tags-hidden' : ''}${!notesVisible ? ' notes-hidden' : ''}${isHistoryMode ? ' history-readonly' : ''}${sceneNumbersVisible ? ' show-scene-numbers' : ''}${includeTitlePageInOutput ? '' : ' print-skip-title-page'}${showRevisionColors ? ' show-revision-colors' : ''}`}
+                  className={`page${!tagsVisible ? ' tags-hidden' : ''}${!notesVisible ? ' notes-hidden' : ''}${sceneNumbersVisible ? ' show-scene-numbers' : ''}${includeTitlePageInOutput ? '' : ' print-skip-title-page'}${showRevisionColors ? ' show-revision-colors' : ''}`}
                   ref={pageRef}
                   style={{
                     fontFamily: fontStack(fontFamily),
@@ -3465,7 +3413,7 @@ const ScreenplayEditor: React.FC = () => {
                       ProseMirror replaces its own children. */}
                   <PencilCaret
                     editor={editor}
-                    enabled={isTouch && !isHistoryMode}
+                    enabled={isTouch}
                     // While the handwriting panel is up the editor does not hold
                     // focus — the writing field does — but the writer still has
                     // to see which line the next insert lands on, and iPadOS
@@ -3477,7 +3425,7 @@ const ScreenplayEditor: React.FC = () => {
                       sibling and not a child of the editor. */}
                   <SelectionHandles
                     editor={editor}
-                    enabled={needsSelectionHandles() && !isHistoryMode}
+                    enabled={needsSelectionHandles()}
                   />
                 </div>
               </div>
@@ -3485,33 +3433,29 @@ const ScreenplayEditor: React.FC = () => {
             </div>
           )}
         </div>
-        {!isHistoryMode && rightPanelVisible && (
+        {rightPanelVisible && (
           <div className="panel-resize-handle" onPointerDown={(e) => handleResizePointerDown('right', e)} style={{ touchAction: 'none' }} />
         )}
-        {!isHistoryMode && <ScriptNotes editor={editor} style={{ width: rightPanelWidth, minWidth: rightPanelWidth }} />}
-        {!isHistoryMode && <CharacterProfiles editor={editor} style={{ width: rightPanelWidth, minWidth: rightPanelWidth }} />}
-        {!isHistoryMode && <TagsPanel editor={editor} style={{ width: rightPanelWidth, minWidth: rightPanelWidth }} />}
-        {!isHistoryMode && <LocationDatabase editor={editor} style={{ width: rightPanelWidth, minWidth: rightPanelWidth }} />}
-        {!isHistoryMode && (
-          <PluginPanelTabs
-            editor={editor}
-            width={rightPanelWidth}
-            onResizePointerDown={(e) => handleResizePointerDown('right', e)}
-          />
-        )}
+        <ScriptNotes editor={editor} style={{ width: rightPanelWidth, minWidth: rightPanelWidth }} />
+        <CharacterProfiles editor={editor} style={{ width: rightPanelWidth, minWidth: rightPanelWidth }} />
+        <TagsPanel editor={editor} style={{ width: rightPanelWidth, minWidth: rightPanelWidth }} />
+        <LocationDatabase editor={editor} style={{ width: rightPanelWidth, minWidth: rightPanelWidth }} />
+        <PluginPanelTabs
+          editor={editor}
+          width={rightPanelWidth}
+          onResizePointerDown={(e) => handleResizePointerDown('right', e)}
+        />
       </div>
-      {!isHistoryMode && (
-        <div style={{ display: 'flex', alignItems: 'center', width: '100%' }}>
-          <StatusBar editorDoc={editor?.getJSON()} />
-          {pluginRegistry.getPanels('status-bar').map((p) => (
-            <p.component key={p.id} />
-          ))}
-        </div>
-      )}
-      {!isHistoryMode && <SearchReplace editor={editor} />}
-      {!isHistoryMode && <GoToPage onGoToPage={handleGoToPage} />}
+      <div style={{ display: 'flex', alignItems: 'center', width: '100%' }}>
+        <StatusBar editorDoc={editor?.getJSON()} />
+        {pluginRegistry.getPanels('status-bar').map((p) => (
+          <p.component key={p.id} />
+        ))}
+      </div>
+      <SearchReplace editor={editor} />
+      <GoToPage onGoToPage={handleGoToPage} />
       <ZoomPanel />
-      {!isHistoryMode && pickerState.visible && (
+      {pickerState.visible && (
         <ElementPicker
           position={pickerState.position}
           defaultType={pickerState.defaultType}
@@ -3522,7 +3466,7 @@ const ScreenplayEditor: React.FC = () => {
           onDismiss={handlePickerDismiss}
         />
       )}
-      {!isHistoryMode && charAutoState.visible && !pickerState.visible && (
+      {charAutoState.visible && !pickerState.visible && (
         <CharacterAutocomplete
           position={charAutoState.position}
           suggestions={charAutoState.suggestions}
@@ -3541,7 +3485,7 @@ const ScreenplayEditor: React.FC = () => {
         />
       )}
       {/* Context menu on mobile: 3-finger touch only */}
-      {!isHistoryMode && ctxMenuState.visible && editor && (
+      {ctxMenuState.visible && editor && (
         <ScriptContextMenu
           editor={editor}
           position={ctxMenuState.position}
@@ -3562,34 +3506,34 @@ const ScreenplayEditor: React.FC = () => {
           overrideSelection={ctxMenuState.savedSelection}
         />
       )}
-      {!isHistoryMode && formatPanelOpen && editor && (
+      {formatPanelOpen && editor && (
         <FormatPanel editor={editor} onClose={() => setFormatPanelOpen(false)} />
       )}
-      {!isHistoryMode && spellModalOpen && editor && (
+      {spellModalOpen && editor && (
         <SpellCheckModal
           editor={editor}
           onClose={() => setSpellModalOpen(false)}
         />
       )}
-      {!isHistoryMode && grammarModalOpen && editor && (
+      {grammarModalOpen && editor && (
         <WritingSuggestionsModal
           editor={editor}
           onClose={() => setGrammarModalOpen(false)}
         />
       )}
-      {!isHistoryMode && grammarRulesPanelOpen && (
+      {grammarRulesPanelOpen && (
         <GrammarRulesPanel onClose={() => setGrammarRulesPanelOpen(false)} />
       )}
-      {!isHistoryMode && <VersionHistory editor={editor} />}
-      {!isHistoryMode && <AssetManager />}
-      {!isHistoryMode && showWelcome && !recoveryPending && <WelcomeDialog onChoice={handleWelcomeChoice} />}
+      <VersionHistory editor={editor} />
+      <AssetManager />
+      {showWelcome && !recoveryPending && <WelcomeDialog onChoice={handleWelcomeChoice} />}
       {/* After the recovery prompt, never alongside it — two launch dialogs at
           once is what #68 warned about. */}
-      {!isHistoryMode && !collabMode && sceneSpacingPrompt
+      {!collabMode && sceneSpacingPrompt
         && !recoveryPending && !recoveryPromptOpen && (
         <SceneSpacingPromptDialog onAnswer={handleSceneSpacingAnswer} />
       )}
-      {!isHistoryMode && !collabMode && (
+      {!collabMode && (
         <RecoveryPromptDialog
           editorReady={!!editor}
           onRestore={handleRecoveryRestore}
@@ -3605,13 +3549,13 @@ const ScreenplayEditor: React.FC = () => {
           onOpenAnyway={openDuplicateAnyway}
         />
       )}
-      {!isHistoryMode && compareVersionOpen && (
+      {compareVersionOpen && (
         <CompareVersionPicker
           onSelect={handleCompareVersionSelect}
           onClose={() => setCompareVersionOpen(false)}
         />
       )}
-      {!isHistoryMode && titlePageEditorOpen && editor && (
+      {titlePageEditorOpen && editor && (
         <TitlePageEditor
           editor={editor}
           onClose={() => setTitlePageEditorOpen(false)}
@@ -3621,13 +3565,13 @@ const ScreenplayEditor: React.FC = () => {
         <FontsDialog onClose={() => setFontsDialogOpen(false)} />
       )}
 
-      {!isHistoryMode && moresContdsOpen && (
+      {moresContdsOpen && (
         <MoresContdsDialog onClose={() => setMoresContdsOpen(false)} />
       )}
-      {!isHistoryMode && footnoteDialogOpen && (
+      {footnoteDialogOpen && (
         <FootnoteDialog onClose={() => setFootnoteDialogOpen(false)} />
       )}
-      {!isHistoryMode && headerFooterOpen && (
+      {headerFooterOpen && (
         <HeaderFooterDialog
           focusBand={headerFooterFocus}
           // Clear the focus hint on the way out: the menu opens this dialog
