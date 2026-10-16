@@ -14,7 +14,7 @@
  * to Open File from Disk, where every save is one the writer asked for.
  */
 import type { JSONContent } from '@tiptap/core';
-import type { ScriptMeta } from '../services/api';
+import type { ScriptMeta } from './scriptMeta';
 import { exportFDX } from './fdxExporter';
 import { exportFountain } from './fountainExporter';
 import { exportOSF } from './osfExporter';

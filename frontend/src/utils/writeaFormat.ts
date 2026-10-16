@@ -16,7 +16,7 @@
  * for any earlier format.
  */
 
-import type { ScriptMeta } from '../services/api';
+import type { ScriptMeta } from './scriptMeta';
 
 export const WRITEA_VERSION = 1;
 

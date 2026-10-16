@@ -15,7 +15,6 @@
  */
 import type { JSONContent } from '@tiptap/react';
 import type { WriteaAsset } from '../utils/writeaFormat';
-import { api } from './api';
 import { collectScratchIds } from '../utils/scratchRefs';
 import { getScratchBytes, getScratchMeta, putScratchAssetWithId } from './scratchAssets';
 
@@ -84,18 +83,6 @@ function fromBase64(b64: string): Uint8Array {
   return out;
 }
 
-type AssetBytesReader = (projectId: string, assetId: string) => Promise<Uint8Array>;
-
-/**
- * The client's asset-byte reader, bound to it — or null when the client has
- * none. Only local storage (desktop, iOS, Android) can hand back raw bytes; the
- * HTTP and cloud clients serve assets by URL only.
- */
-export function assetBytesReader(client: object = api): AssetBytesReader | null {
-  const fn = (client as { getAssetBytes?: AssetBytesReader }).getAssetBytes;
-  return typeof fn === 'function' ? (p, a) => fn.call(client, p, a) : null;
-}
-
 export function mimeFor(filename: string): string {
   const ext = filename.split('.').pop()?.toLowerCase() || '';
   if (ext === 'png') return 'image/png';
@@ -104,50 +91,6 @@ export function mimeFor(filename: string): string {
   if (ext === 'webp') return 'image/webp';
   if (ext === 'svg') return 'image/svg+xml';
   return 'application/octet-stream';
-}
-
-/**
- * Read and base64-encode the referenced assets, stopping at `capBytes`.
- *
- * An asset that fails to read (deleted from disk, permissions) is skipped and
- * marks the result truncated — a snapshot missing one image is far better than
- * no snapshot at all.
- */
-export async function packAssets(
-  projectId: string,
-  refs: AssetRef[],
-  capBytes: number = DEFAULT_ASSET_CAP_BYTES,
-): Promise<{ assets: WriteaAsset[]; truncated: boolean }> {
-  const assets: WriteaAsset[] = [];
-  let total = 0;
-  let truncated = false;
-
-  const getBytes = assetBytesReader(api);
-  if (!getBytes) {
-    return { assets: [], truncated: refs.length > 0 };
-  }
-
-  for (const ref of refs) {
-    try {
-      const bytes = await getBytes(projectId, ref.id);
-      if (total + bytes.byteLength > capBytes) {
-        truncated = true;
-        break;
-      }
-      total += bytes.byteLength;
-      assets.push({
-        id: ref.id,
-        filename: ref.filename,
-        mime_type: mimeFor(ref.filename),
-        data_base64: toBase64(bytes),
-      });
-    } catch (err) {
-      console.warn('[backup] could not read asset', ref.id, err);
-      truncated = true;
-    }
-  }
-
-  return { assets, truncated };
 }
 
 /**
@@ -217,30 +160,3 @@ export async function unpackScratchAssets(assets: WriteaAsset[]): Promise<number
   return restored;
 }
 
-/**
- * Write embedded assets back into the project, preserving their ids so the
- * restored document's references still resolve. Failures are logged, not
- * thrown: a restored script with a missing image beats a failed restore.
- */
-export async function unpackAssets(projectId: string, assets: WriteaAsset[]): Promise<number> {
-  const importAsset = (api as unknown as {
-    importAsset?: (p: string, a: { id: string; filename: string; mime_type: string; bytes: Uint8Array }) => Promise<void>;
-  }).importAsset;
-  if (typeof importAsset !== 'function' || assets.length === 0) return 0;
-
-  let restored = 0;
-  for (const asset of assets) {
-    try {
-      await importAsset.call(api, projectId, {
-        id: asset.id,
-        filename: asset.filename,
-        mime_type: asset.mime_type,
-        bytes: fromBase64(asset.data_base64),
-      });
-      restored++;
-    } catch (err) {
-      console.warn('[backup] could not restore asset', asset.id, err);
-    }
-  }
-  return restored;
-}

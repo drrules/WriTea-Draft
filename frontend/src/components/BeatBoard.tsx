@@ -23,7 +23,6 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useEditorStore, type BeatInfo, type BeatLinkPreview } from '../stores/editorStore';
-import { api } from '../services/api';
 
 const BEAT_COLORS = [
   '', '#8b5cf6', '#4f46e5', '#2563eb', '#059669',
@@ -39,58 +38,13 @@ function extractUrls(text: string): string[] {
   return matches ? [...new Set(matches)] : [];
 }
 
-/* ─── Link Preview fetcher with in-memory cache ─── */
-const _previewCache = new Map<string, BeatLinkPreview | 'loading' | 'error'>();
+/* ─── Link previews already saved on a beat (nothing new is fetched) ─── */
 
 function useLinkPreviews(
-  beatId: string,
   description: string,
   existingPreviews: BeatLinkPreview[] | undefined,
-  onUpdate: (id: string, updates: Partial<BeatInfo>) => void,
 ) {
   const urls = useMemo(() => extractUrls(description), [description]);
-
-  useEffect(() => {
-    if (urls.length === 0) return;
-
-    // Find URLs that aren't already cached on the beat or in the in-memory cache
-    const existingUrls = new Set((existingPreviews || []).map((p) => p.url));
-    const newUrls = urls.filter((u) => !existingUrls.has(u) && _previewCache.get(u) !== 'loading');
-
-    if (newUrls.length === 0) {
-      // Check if any cached previews can fill in
-      const cached = urls
-        .map((u) => _previewCache.get(u))
-        .filter((v): v is BeatLinkPreview => !!v && typeof v === 'object');
-      if (cached.length > 0 && cached.length > (existingPreviews || []).length) {
-        onUpdate(beatId, { linkPreviews: cached });
-      }
-      return;
-    }
-
-    for (const url of newUrls) {
-      _previewCache.set(url, 'loading');
-      api.fetchLinkPreview(url).then((resp) => {
-        const preview: BeatLinkPreview = {
-          url: resp.url,
-          title: resp.title,
-          description: resp.description,
-          image: resp.image,
-          siteName: resp.site_name,
-        };
-        _previewCache.set(url, preview);
-        // Merge into beat's cached previews
-        const store = useEditorStore.getState();
-        const beat = store.beats.find((b) => b.id === beatId);
-        const current = beat?.linkPreviews || [];
-        if (!current.some((p) => p.url === url)) {
-          onUpdate(beatId, { linkPreviews: [...current, preview] });
-        }
-      }).catch(() => {
-        _previewCache.set(url, 'error');
-      });
-    }
-  }, [beatId, urls, existingPreviews, onUpdate]);
 
   // Return only previews for URLs still in the description
   return useMemo(() => {
@@ -241,14 +195,13 @@ const BeatCardContent: React.FC<BeatCardContentProps> = ({
   const imgH = beat.imageHeight || 0;
   const isImgFull = imgH === -1; // -1 = full card
 
-  // Fetch and cache link previews for URLs in description
-  const linkPreviews = useLinkPreviews(beat.id, beat.description, beat.linkPreviews, onUpdate);
+  // Previews saved on this beat, for URLs still in the description
+  const linkPreviews = useLinkPreviews(beat.description, beat.linkPreviews);
 
   const handleRemovePreview = useCallback(
     (url: string) => {
       const updated = (beat.linkPreviews || []).filter((p) => p.url !== url);
       onUpdate(beat.id, { linkPreviews: updated });
-      _previewCache.set(url, 'error'); // prevent re-fetch
     },
     [beat.id, beat.linkPreviews, onUpdate],
   );

@@ -28,9 +28,9 @@ import {
   serializeWritea, parseWritea,
   type ParsedWritea, type BackupKind,
 } from '../utils/writeaFormat';
-import { collectAssetRefs, packAssets, packScratchAssets } from './snapshotAssets';
+import { packScratchAssets } from './snapshotAssets';
 import { collectScratchIds } from '../utils/scratchRefs';
-import type { ScriptMeta } from './api';
+import type { ScriptMeta } from '../utils/scriptMeta';
 
 /** A slow or disconnected network share must not leave a promise pending forever. */
 const WRITE_TIMEOUT_MS = 10_000;
@@ -259,32 +259,18 @@ export async function writeSnapshot(opts: WriteSnapshotOptions): Promise<WriteSn
   // projects can find the right script in Finder without reading filenames.
   const projectFolder = buildProjectFolderName(opts.projectTitle);
 
-  // Images live in one of two places: a project's asset store once the script
-  // has been saved into one, and the scratch store before that. A backup used to
-  // pack only the first, which was harmless while project-less documents carried
-  // their images inline — and would now silently drop every picture from a
-  // backup of an unsaved screenplay, which is exactly the document with no other
-  // copy anywhere.
-  let assets: Awaited<ReturnType<typeof packAssets>>['assets'] = [];
+  // Images live in the scratch store; pack them so a restored backup keeps its pictures.
+  let assets: Awaited<ReturnType<typeof packScratchAssets>>['assets'] = [];
   let assetsOmitted = false;
-  const projectRefs = collectAssetRefs(opts.content);
   const scratchIds = collectScratchIds(opts.content);
   if (backupIncludeImages) {
-    if (opts.projectId && projectRefs.length > 0) {
-      const packed = await packAssets(opts.projectId, projectRefs);
-      assets = packed.assets;
-      assetsOmitted = packed.truncated;
-    } else if (projectRefs.length > 0) {
-      // References into a project we cannot read from — nothing to pack.
-      assetsOmitted = true;
-    }
     if (scratchIds.size > 0) {
       const packed = await packScratchAssets(opts.content);
-      assets = assets.concat(packed.assets);
-      assetsOmitted = assetsOmitted || packed.truncated;
+      assets = packed.assets;
+      assetsOmitted = packed.truncated;
     }
   } else {
-    assetsOmitted = projectRefs.length > 0 || scratchIds.size > 0;
+    assetsOmitted = scratchIds.size > 0;
   }
 
   const meta: ScriptMeta = {
