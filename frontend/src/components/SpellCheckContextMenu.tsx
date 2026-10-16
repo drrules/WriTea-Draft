@@ -160,7 +160,7 @@ const SpellCheckContextMenu: React.FC<SpellCheckContextMenuProps> = ({
       {hasMultipleTargets && addOpen && (
         <div style={{ borderTop: '1px solid var(--fd-border)' }}>
           {activeTargets.map((t) => {
-            const label = t === PROJECT_DICT_TARGET ? 'Project dictionary' : t;
+            const label = t === PROJECT_DICT_TARGET ? 'Script dictionary' : t;
             return (
               <div
                 key={t}

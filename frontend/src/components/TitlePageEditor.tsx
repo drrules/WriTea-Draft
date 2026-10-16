@@ -239,8 +239,8 @@ const TitlePageEditor: React.FC<Props> = ({ editor, onClose }) => {
     if (!file.type.startsWith('image/')) { showToast('Please choose an image file', 'error'); return; }
     const placement = imagePosition;
     try {
-      // Shared with the body-image paths: a project asset when there is a
-      // project, the scratch store when there isn't, never bytes in the document.
+      // Shared with the body-image paths: the scratch store, never bytes in
+      // the document.
       const attrs = await buildImageAttrs(file, ['title-page-image']);
       warnIfImageDegraded(attrs);
       // Add to the chosen group and rebuild the page so it appears in the right place.
@@ -260,7 +260,7 @@ const TitlePageEditor: React.FC<Props> = ({ editor, onClose }) => {
       ...prev,
       tpTitle: documentTitle || prev.tpTitle,
     }));
-    showToast('Synced title from project', 'success');
+    showToast('Synced title from the document', 'success');
   }, []);
 
   // The active script-format template can restrict which title-page fields appear
@@ -465,7 +465,7 @@ const TitlePageEditor: React.FC<Props> = ({ editor, onClose }) => {
               onClick={handleSyncFromProject}
               type="button"
             >
-              Sync Title from Project
+              Sync Title from Document
             </button>
             <div className="props-field props-field-wide" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
               <label className="props-label" style={{ marginTop: 0 }}>Place image</label>

@@ -154,11 +154,10 @@ const BackupSettingsSection: React.FC = () => {
       <h2 className="settings-section-title">Automatic Backups</h2>
       <p className="settings-section-desc">
         WriTea Draft can save timestamped copies of your script to a folder you
-        choose while you write. Each project gets its own folder inside it, and
-        the first copy is written as soon as you turn this on. Backups live
-        outside the app's database, so they survive even if something happens to
-        it. This is separate from <strong>Version History</strong>, which stores
-        checkpoints inside the database.
+        choose while you write. The first copy is written as soon as you turn
+        this on. Backups live outside the app, so they survive even if
+        something happens to it. This is separate from <strong>Version
+        History</strong>, which keeps checkpoints with the script itself.
       </p>
 
       <div className="settings-row">

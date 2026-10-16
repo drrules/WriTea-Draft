@@ -125,7 +125,7 @@ const LanguagesSection: React.FC = () => {
   );
 };
 
-// ─── Project dictionary ────────────────────────────────────────────────────
+// ─── Script dictionary ────────────────────────────────────────────────────
 
 const ProjectDictionarySection: React.FC = () => {
   useSpellCheckerVersion();
@@ -167,13 +167,13 @@ const ProjectDictionarySection: React.FC = () => {
             onChange={(e) => toggleEnabled(e.target.checked)}
           />
           <div style={{ flex: 1 }}>
-            <div style={sectionTitleStyle}>Project dictionary</div>
+            <div style={sectionTitleStyle}>Script dictionary</div>
             <div style={helpTextStyle}>
               {projectEnabled
                 ? projectWords.length === 0
                   ? 'No words yet. Anything you "Add to Dictionary" goes here by default.'
                   : `${projectWords.length} word${projectWords.length === 1 ? '' : 's'}. Saved with this script.`
-                : 'Disabled for this project. Checks skip these words and "Add to Dictionary" routes to globals only.'}
+                : 'Disabled for this script. Checks skip these words and "Add to Dictionary" routes to globals only.'}
             </div>
           </div>
         </label>
@@ -271,7 +271,7 @@ const GlobalDictionariesSection: React.FC<{ onOpenLibrary: () => void }> = ({ on
         <div style={{ flex: 1 }}>
           <div style={sectionTitleStyle}>Global dictionaries</div>
           <div style={helpTextStyle}>
-            Reusable word lists shared across projects. Enable any combination for this script.
+            Reusable word lists shared across scripts. Enable any combination for this script.
           </div>
         </div>
         <button type="button" onClick={onOpenLibrary} style={buttonStyle}>Manage library…</button>

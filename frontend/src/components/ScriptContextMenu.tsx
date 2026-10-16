@@ -942,7 +942,7 @@ const ScriptContextMenu: React.FC<ScriptContextMenuProps> = ({
               {multipleTargets && addDictSubOpen && (
                 <CtxSubmenu anchorRef={addDictAnchor}>
                   {activeAddTargets.map((t) => {
-                    const label = t === PROJECT_DICT_TARGET ? 'Project dictionary' : t;
+                    const label = t === PROJECT_DICT_TARGET ? 'Script dictionary' : t;
                     return (
                       <div
                         key={t}

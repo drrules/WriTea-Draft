@@ -389,7 +389,7 @@ const SpellCheckModal: React.FC<SpellCheckModalProps> = ({ editor, onClose }) =>
               return <button onClick={handleAddToDictionary}>Add to Dictionary</button>;
             }
             return targets.map((t) => {
-              const label = t === PROJECT_DICT_TARGET ? 'Add to Project' : `Add to "${t}"`;
+              const label = t === PROJECT_DICT_TARGET ? 'Add to Script' : `Add to "${t}"`;
               return (
                 <button key={t} onClick={() => handleAddToDictionaryTarget(t)}>
                   {label}
