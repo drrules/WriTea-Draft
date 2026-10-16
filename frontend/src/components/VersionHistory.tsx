@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useMemo } from 'react';
 import type { Editor, JSONContent } from '@tiptap/react';
-import { useProjectStore } from '../stores/projectStore';
+import { useVersionUiStore } from '../stores/versionUiStore';
 import { useVersionStore } from '../stores/versionStore';
 import { useEditorStore } from '../stores/editorStore';
 import {
@@ -28,7 +28,7 @@ async function readById(id: string): Promise<unknown> {
  * a compare against the current text, and restoring one.
  */
 const VersionHistory: React.FC<VersionHistoryProps> = ({ editor }) => {
-  const { versionHistoryOpen, setVersionHistoryOpen } = useProjectStore();
+  const { versionHistoryOpen, setVersionHistoryOpen } = useVersionUiStore();
   const stored = useVersionStore((s) => s.versions);
   const versions = useMemo(() => summariesNewestFirst(stored), [stored]);
 

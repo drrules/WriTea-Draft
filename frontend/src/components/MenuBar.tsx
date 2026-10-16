@@ -10,7 +10,7 @@ import { Editor } from '@tiptap/react';
 import type { JSONContent } from '@tiptap/core';
 import { useEditorStore, DEFAULT_PAGE_LAYOUT, printedPageNumber, resolveHeaderFooter } from '../stores/editorStore';
 import type { DocumentOrigin } from '../stores/editorStore';
-import { useProjectStore } from '../stores/projectStore';
+import { useVersionUiStore } from '../stores/versionUiStore';
 import { useAssetStore } from '../stores/assetStore';
 import { requestHandwriting } from '../utils/handwriting';
 import { requestElementMenu } from '../utils/elementMenu';
@@ -331,7 +331,7 @@ const MenuBar: React.FC<MenuBarProps> = ({
     pageLabels,
   } = useEditorStore();
 
-  const { setVersionHistoryOpen } = useProjectStore();
+  const { setVersionHistoryOpen } = useVersionUiStore();
 
   // Build a saveable content object: editor JSON + store metadata at top level.
   // This used to be a hand-maintained copy of ScreenplayEditor's version and had
