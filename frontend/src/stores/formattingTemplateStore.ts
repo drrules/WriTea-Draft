@@ -86,8 +86,8 @@ function now(): string {
  * element existed comes back without it — and a missing rule means the template
  * editor cannot show the field and the stylesheet emits nothing for it. Filling
  * the gaps on read costs one object spread and needs no migration pass over
- * storage, which matters because templates live in three places (local SQLite,
- * the backend, and the cloud copy).
+ * storage, which matters because templates saved by older versions are never
+ * rewritten.
  *
  * Two sets of rules have arrived this way: the title page's own elements, and
  * `avBlock` — the element-menu entry for a two-column AV body. The AV one comes

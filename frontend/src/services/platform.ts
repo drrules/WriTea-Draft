@@ -6,8 +6,8 @@
  *  - a Tauri desktop app (macOS / Windows / Linux), or
  *  - a Tauri mobile app (iOS / Android).
  *
- * On mobile Tauri the Python sidecar backend is unavailable, so the
- * frontend uses a local SQLite database for storage instead of HTTP.
+ * On mobile Tauri there is no desktop-only backend, so everything runs
+ * in the frontend and on local files.
  */
 
 /** True when running inside any Tauri WebView (desktop or mobile). */

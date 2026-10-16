@@ -1,8 +1,8 @@
 /**
  * Warns the user when WriTea Draft's app data folder is under OneDrive sync.
  *
- * OneDrive grabs SQLite WAL/journal files mid-write, which on Windows
- * causes silent save failures. This dialog runs at startup once we've
+ * OneDrive can lock or sync files mid-write, which on Windows can
+ * cause silent save failures. This dialog runs at startup once we've
  * resolved the app data path, lets the user dismiss permanently, and
  * points them at a fix.
  */
@@ -60,8 +60,8 @@ const OneDriveWarningDialog: React.FC = () => {
           <p style={{ margin: '0 0 12px' }}>
             WriTea Draft's data folder is inside a OneDrive-synced location. This
             is a known cause of <strong>silent save failures</strong>: OneDrive
-            can grab the SQLite write-ahead log file in the middle of a save,
-            corrupting the database and losing your latest edits.
+            can lock or sync a file in the middle of a save, and your latest
+            edits may not be written.
           </p>
           <p style={{ margin: '0 0 6px', fontSize: 13, color: 'var(--fd-text-muted)' }}>
             Affected folder:

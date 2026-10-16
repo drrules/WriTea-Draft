@@ -18,16 +18,8 @@
  * which has no room to await anything, only ever writes a reference that
  * already resolves.
  *
- * Deliberately NOT part of the `api` object swap (services/api):
- *
- *   - every `api` asset method is keyed by a project id, and this is the case
- *     where there isn't one;
- *   - `fallback-storage` throws outright on `uploadAsset`, and that is the most
- *     degraded mode — precisely when crash protection matters most;
- *   - `initStorage()` resolves the SQLite race with a fifteen-second timeout,
- *     and a paste during that window still has to work.
- *
- * `spellchecker.ts` owns its dictionary IndexedDB for the same reasons.
+ * Kept in its own IndexedDB, as `spellchecker.ts` does for its dictionary, so
+ * a paste never has to wait on anything else being ready.
  */
 
 import { uuid } from '../utils/uuid';

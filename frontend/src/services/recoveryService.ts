@@ -19,7 +19,7 @@
  * choice, so a recovered draft can never silently overwrite a version the
  * writer deliberately saved.
  *
- * Storage is localStorage rather than SQLite: it survives process death, it is
+ * Storage is localStorage: it survives process death, it is
  * synchronous — which is what makes the last-moment flush on `pagehide` viable,
  * since iOS gives no async window during termination — and it is the one store
  * available identically on desktop Tauri, both mobile Tauri platforms, and the
