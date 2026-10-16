@@ -1,23 +1,18 @@
 /**
- * Diagnostics — collect runtime info that's useful when triaging bug reports.
+ * Diagnostics: collect runtime info that is useful when triaging bug reports.
  *
- * Surfaces storage backend, DB path, last storage error, OS, app version,
- * and OneDrive interference detection (Windows). Rendered by the Help →
- * Diagnostics dialog.
+ * Surfaces OS, app version, the app data folder, and OneDrive interference
+ * detection (Windows). Rendered by the Help > Diagnostics dialog.
  */
 
 import { getCompatEntries } from './compat';
-import { useStorageStatusStore } from '../stores/storageStatusStore';
 import { isDesktopTauri } from './platform';
 
 export interface DiagnosticsReport {
   appVersion: string;
   os: string;
   userAgent: string;
-  storageMode: string;
-  storageError: string | null;
   appDataDir: string | null;
-  sqliteDbPath: string | null;
   oneDriveSuspect: boolean;
   compat: Array<{ label: string; mode: string; using: string; errorReason?: string }>;
   collectedAt: string;
@@ -43,8 +38,8 @@ function detectOs(): string {
  * Heuristic check for OneDrive interference on Windows. Returns true if the
  * app data directory path suggests it's under a OneDrive-synced folder.
  *
- * SQLite WAL/journal files don't survive cloud sync — OneDrive can grab
- * the .db-wal mid-write, causing silent save failures. Worth flagging.
+ * Cloud sync can grab a file mid-write, which shows up as a silent save
+ * failure. Worth flagging.
  */
 export function isUnderOneDrive(path: string | null): boolean {
   if (!path) return false;
@@ -56,16 +51,13 @@ export function isUnderOneDrive(path: string | null): boolean {
 
 /** Collect a snapshot of diagnostic info. Safe to call from web (returns reduced data). */
 export async function collectDiagnostics(): Promise<DiagnosticsReport> {
-  const status = useStorageStatusStore.getState();
   const os = detectOs();
 
   let appDataDir: string | null = null;
-  let sqliteDbPath: string | null = null;
   if (isDesktopTauri()) {
     try {
       const path = await import('@tauri-apps/api/path');
       appDataDir = await path.appDataDir();
-      sqliteDbPath = appDataDir ? `${appDataDir.replace(/[\\/]+$/, '')}/writeadraft.db` : null;
     } catch (err) {
       appDataDir = `(unavailable: ${(err as Error).message || err})`;
     }
@@ -77,10 +69,7 @@ export async function collectDiagnostics(): Promise<DiagnosticsReport> {
     appVersion: getAppVersion(),
     os,
     userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'n/a',
-    storageMode: status.mode,
-    storageError: status.errorReason,
     appDataDir,
-    sqliteDbPath,
     oneDriveSuspect,
     compat: getCompatEntries().map((e) => ({
       label: e.label,
@@ -101,28 +90,25 @@ export function getAppVersion(): string {
   return '1.0.42';
 }
 
-/** Format a report as plain text suitable for pasting into a GitHub issue. */
+/** Format a report as plain text suitable for pasting into a bug report. */
 export function formatReport(r: DiagnosticsReport): string {
   const lines: string[] = [];
-  lines.push(`WriTea Draft Diagnostics — ${r.collectedAt}`);
+  lines.push(`WriTea Draft Diagnostics (${r.collectedAt})`);
   lines.push(`Version: ${r.appVersion}`);
   lines.push(`OS: ${r.os}`);
-  lines.push(`Storage backend: ${r.storageMode}`);
-  if (r.storageError) lines.push(`Storage error: ${r.storageError}`);
   if (r.appDataDir) lines.push(`App data dir: ${r.appDataDir}`);
-  if (r.sqliteDbPath) lines.push(`SQLite DB path: ${r.sqliteDbPath}`);
   if (r.oneDriveSuspect) {
     lines.push('');
-    lines.push('⚠ OneDrive interference suspected — the app data directory appears to');
-    lines.push('  be under a OneDrive-synced folder. OneDrive can corrupt SQLite WAL');
-    lines.push('  files mid-write, causing silent save failures. Consider moving');
+    lines.push('Warning: OneDrive interference suspected. The app data directory appears to');
+    lines.push('  be under a OneDrive-synced folder. OneDrive can lock or sync files');
+    lines.push('  mid-write, causing silent save failures. Consider moving');
     lines.push('  C:\\Users\\<you>\\AppData out of OneDrive sync, or excluding the');
     lines.push('  WriTea Draft data folder from OneDrive.');
   }
   lines.push('');
   lines.push('Compatibility:');
   for (const c of r.compat) {
-    lines.push(`  - ${c.label}: ${c.mode} (${c.using})${c.errorReason ? ` — ${c.errorReason}` : ''}`);
+    lines.push(`  - ${c.label}: ${c.mode} (${c.using})${c.errorReason ? `, ${c.errorReason}` : ''}`);
   }
   lines.push('');
   lines.push(`User-Agent: ${r.userAgent}`);

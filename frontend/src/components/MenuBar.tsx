@@ -3520,7 +3520,7 @@ const MenuBar: React.FC<MenuBarProps> = ({
                   }}>
                     <strong>OneDrive interference suspected.</strong> Your app
                     data folder appears to be inside a OneDrive-synced
-                    location. OneDrive can corrupt SQLite WAL files mid-write,
+                    location. OneDrive can lock or sync files mid-write,
                     causing silent save failures. To fix this, exclude
                     WriTea Draft's data folder from OneDrive backup, or move your
                     Windows AppData folder out of OneDrive sync.
@@ -3530,15 +3530,8 @@ const MenuBar: React.FC<MenuBarProps> = ({
                   <tbody>
                     <DiagRow label="Version" value={diagnosticsReport.appVersion} />
                     <DiagRow label="OS" value={diagnosticsReport.os} />
-                    <DiagRow label="Storage backend" value={diagnosticsReport.storageMode} />
-                    {diagnosticsReport.storageError && (
-                      <DiagRow label="Storage error" value={diagnosticsReport.storageError} mono />
-                    )}
                     {diagnosticsReport.appDataDir && (
                       <DiagRow label="App data dir" value={diagnosticsReport.appDataDir} mono />
-                    )}
-                    {diagnosticsReport.sqliteDbPath && (
-                      <DiagRow label="SQLite DB path" value={diagnosticsReport.sqliteDbPath} mono />
                     )}
                   </tbody>
                 </table>
