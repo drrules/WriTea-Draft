@@ -2,7 +2,6 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import ScreenplayEditor from './components/ScreenplayEditor';
 import SettingsPage from './components/SettingsPage';
 import Toast from './components/Toast';
-import StorageFallbackDialog from './components/StorageFallbackDialog';
 import SaveErrorDialog from './components/SaveErrorDialog';
 import OneDriveWarningDialog from './components/OneDriveWarningDialog';
 import { pluginRegistry } from './plugins/registry';
@@ -31,7 +30,6 @@ function App() {
         ))}
       </Routes>
       <Toast />
-      <StorageFallbackDialog />
       <SaveErrorDialog />
       <OneDriveWarningDialog />
     </>
