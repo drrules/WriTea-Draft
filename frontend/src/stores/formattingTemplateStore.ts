@@ -15,7 +15,7 @@ import { ONE_HOUR_DRAMA_TEMPLATE, ONE_HOUR_DRAMA_ID } from './templates/oneHourD
 import { STAGE_PLAY_TEMPLATE, STAGE_PLAY_ID } from './templates/stagePlayTemplate';
 import { RADIO_PLAY_TEMPLATE, RADIO_PLAY_ID } from './templates/radioPlayTemplate';
 import { AV_SCRIPT_TEMPLATE, AV_SCRIPT_ID } from './templates/avScriptTemplate';
-import { api } from '../services/api';
+import { loadStoredTemplates, saveStoredTemplates } from '../utils/templateStorage';
 import { useSettingsStore } from './settingsStore';
 
 /** Built-in system templates, keyed by id. Read-only — never persisted. */
@@ -200,13 +200,8 @@ export const useFormattingTemplateStore = create<FormattingTemplateState>((set, 
   },
 
   loadTemplates: async () => {
-    try {
-      const templates = await (api as any).listFormattingTemplates();
-      set({ templates: (templates as FormattingTemplate[]).map(withMissingRules), loaded: true });
-    } catch {
-      // Storage not available yet or no templates
-      set({ loaded: true });
-    }
+    const templates = loadStoredTemplates() as FormattingTemplate[];
+    set({ templates: templates.map(withMissingRules), loaded: true });
   },
 
   createTemplate: async (data) => {
@@ -225,10 +220,8 @@ export const useFormattingTemplateStore = create<FormattingTemplateState>((set, 
       createdAt: ts,
       updatedAt: ts,
     };
-    try {
-      await (api as any).createFormattingTemplate(template);
-    } catch { /* web fallback: store in memory */ }
     set((s) => ({ templates: [...s.templates, template] }));
+    saveStoredTemplates(get().templates);
     return template;
   },
 
@@ -239,12 +232,7 @@ export const useFormattingTemplateStore = create<FormattingTemplateState>((set, 
         t.id === id ? { ...t, ...data, updatedAt: ts } : t,
       ),
     }));
-    const updated = get().templates.find((t) => t.id === id);
-    if (updated) {
-      try {
-        await (api as any).updateFormattingTemplate(id, updated);
-      } catch { /* ignore */ }
-    }
+    saveStoredTemplates(get().templates);
   },
 
   deleteTemplate: async (id) => {
@@ -263,9 +251,7 @@ export const useFormattingTemplateStore = create<FormattingTemplateState>((set, 
     } else if (settings.defaultScriptFormat === id) {
       settings.setDefaultScriptFormat(null);
     }
-    try {
-      await (api as any).deleteFormattingTemplate(id);
-    } catch { /* ignore */ }
+    saveStoredTemplates(get().templates);
   },
 
   duplicateTemplate: async (id) => {

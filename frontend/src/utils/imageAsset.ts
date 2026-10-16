@@ -1,5 +1,3 @@
-import { api } from '../services/api';
-import { authedFetch } from '../services/authedFetch';
 import { getScratchObjectUrl } from '../services/scratchAssets';
 
 interface ImageNodeAttrs {
@@ -38,23 +36,18 @@ const SCRATCH_PREFIX = 'scratch:';
  * as an empty slot because of this.
  */
 export function resolveImageUrl(attrs: ImageNodeAttrs): string | null {
-  if (attrs.assetId && attrs.projectId) {
-    try { return api.getAssetUrl(attrs.projectId, attrs.assetId, attrs.filename ?? undefined); } catch { /* fall through */ }
-  }
   if (attrs.scratchId) return `${SCRATCH_PREFIX}${attrs.scratchId}`;
   return attrs.src ?? null;
 }
 
-/** Fetch a (possibly auth-protected) asset URL as a blob object URL. data:/blob:
- *  URLs are returned as-is. The asset endpoint requires a token, which authedFetch
- *  supplies; an <img src> alone would 401. */
+/** Fetch an image URL as a blob object URL. data:/blob: URLs are returned as-is. */
 async function toLoadableUrl(url: string): Promise<{ url: string; revoke: () => void } | null> {
   if (url.startsWith('data:') || url.startsWith('blob:')) return { url, revoke: () => {} };
   if (url.startsWith(SCRATCH_PREFIX)) {
     return getScratchObjectUrl(url.slice(SCRATCH_PREFIX.length));
   }
   try {
-    const res = await authedFetch(url);
+    const res = await fetch(url);
     if (!res.ok) return null;
     const blob = await res.blob();
     const obj = URL.createObjectURL(blob);
@@ -66,8 +59,7 @@ async function toLoadableUrl(url: string): Promise<{ url: string; revoke: () => 
 
 /**
  * Load an image URL into a PNG data URL plus natural dimensions, via a canvas.
- * Fetches with auth so protected asset URLs work; the blob is same-origin so the
- * canvas isn't tainted.
+ * The blob is same-origin, so the canvas isn't tainted.
  */
 export async function loadImageData(url: string): Promise<{ dataUrl: string; width: number; height: number } | null> {
   const loadable = await toLoadableUrl(url);
