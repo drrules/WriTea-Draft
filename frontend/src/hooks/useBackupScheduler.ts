@@ -28,13 +28,9 @@ export interface BackupSchedulerOptions {
   /** Builds the payload to snapshot; returns undefined when there's nothing. */
   buildSaveContent: () => Record<string, unknown> | undefined;
   documentTitle: string;
-  projectId?: string | null;
-  scriptId?: string | null;
-  projectTitle?: string;
   /** Shared with auto-save: true while the editor is swapping documents. */
   scriptSwitchingRef: React.MutableRefObject<boolean>;
   isCollabGuest: boolean;
-  isHistoryMode: boolean;
 }
 
 export function useBackupScheduler(opts: BackupSchedulerOptions): void {
@@ -60,7 +56,7 @@ export function useBackupScheduler(opts: BackupSchedulerOptions): void {
   // so the key is already cleared by the time that effect's initial run fires.
   useEffect(() => {
     lastSnapshotKeyRef.current = '';
-  }, [opts.scriptId, documentOpenSeq]);
+  }, [documentOpenSeq]);
 
   useEffect(() => {
     if (!backupsSupported()) return;
@@ -75,7 +71,7 @@ export function useBackupScheduler(opts: BackupSchedulerOptions): void {
      */
     const tick = async (): Promise<boolean> => {
       const current = optsRef.current;
-      if (current.isCollabGuest || current.isHistoryMode) return true;
+      if (current.isCollabGuest) return true;
       if (current.scriptSwitchingRef.current) return false;
       if (isWritingRef.current) return false;
 
@@ -87,7 +83,7 @@ export function useBackupScheduler(opts: BackupSchedulerOptions): void {
       // mounted editor is in before its content arrives, hence "not settled".
       if (!docHasAnyText(content)) return false;
 
-      if (!current.scriptId && !backupUnsavedDocs) return true;
+      if (!backupUnsavedDocs) return true;
 
       // Skip when nothing changed. Deliberately excludes assets, so unchanged
       // images never trigger an expensive re-pack.
@@ -99,9 +95,9 @@ export function useBackupScheduler(opts: BackupSchedulerOptions): void {
         const result = await writeSnapshot({
           content,
           title: current.documentTitle || 'Untitled',
-          projectId: current.projectId ?? null,
-          scriptId: current.scriptId ?? null,
-          projectTitle: current.projectTitle,
+          projectId: null,
+          scriptId: null,
+          projectTitle: undefined,
           kind: 'auto',
         });
         lastSnapshotKeyRef.current = key;

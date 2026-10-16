@@ -1876,12 +1876,8 @@ const ScreenplayEditor: React.FC = () => {
   useBackupScheduler({
     buildSaveContent,
     documentTitle: backupDocumentTitle,
-    projectId: null,
-    scriptId: null,
-    projectTitle: undefined,
     scriptSwitchingRef,
     isCollabGuest,
-    isHistoryMode: false,
   });
 
   /**
@@ -1949,8 +1945,6 @@ const ScreenplayEditor: React.FC = () => {
     openAnyway: openDuplicateAnyway,
     dismiss: dismissOpenElsewhere,
   } = useOpenDocumentGuard({
-    projectId: null,
-    scriptId: null,
     originPath: documentOriginPath,
     documentTitle: backupDocumentTitle,
     ready: !!editor,
@@ -2064,13 +2058,10 @@ const ScreenplayEditor: React.FC = () => {
   useRecoverySnapshot({
     buildSaveContent,
     documentTitle: backupDocumentTitle,
-    projectId: null,
-    scriptId: null,
     editor,
     lastSavedJsonRef,
     scriptSwitchingRef,
     isCollabGuest,
-    isHistoryMode: false,
     isPaused: recoveryPromptOpen || recoveryPending,
     hasEdits: () => (editor ? hasEditsSinceLoad(editor) : false),
   });

@@ -45,8 +45,6 @@ export interface RecoverySnapshotOptions {
   /** Builds the payload to snapshot; returns undefined when there's nothing. */
   buildSaveContent: () => Record<string, unknown> | undefined;
   documentTitle: string;
-  projectId: string | null;
-  scriptId: string | null;
   /**
    * The live editor, subscribed to for change notifications. Null before it
    * exists; the interval and the hide flush still run.
@@ -61,7 +59,6 @@ export interface RecoverySnapshotOptions {
   /** Shared with auto-save: true while the editor is swapping documents. */
   scriptSwitchingRef: React.MutableRefObject<boolean>;
   isCollabGuest: boolean;
-  isHistoryMode: boolean;
   /**
    * True while the recovery prompt is on screen. Writing then would overwrite
    * the very snapshot the writer is being asked about, with whatever the editor
@@ -139,9 +136,9 @@ export function useRecoverySnapshot(opts: RecoverySnapshotOptions): void {
     const capture = () => {
       const current = optsRef.current;
 
-      // A guest is editing someone else's document over the wire and a history
-      // view is read-only; neither has unsaved work of its own to protect.
-      if (current.isCollabGuest || current.isHistoryMode) return;
+      // A guest is editing someone else's document over the wire, so it has no
+      // unsaved work of its own to protect.
+      if (current.isCollabGuest) return;
       // The prompt is holding the previous session's work; leave the slot alone
       // until the writer has said what to do with it.
       if (current.isPaused) return;
@@ -205,8 +202,8 @@ export function useRecoverySnapshot(opts: RecoverySnapshotOptions): void {
       const stored = writeRecoverySnapshot({
         content,
         title: current.documentTitle || 'Untitled Screenplay',
-        projectId: current.projectId,
-        scriptId: current.scriptId,
+        projectId: null,
+        scriptId: null,
       });
       // Only remember it as written when it was: a document over the size limit
       // must keep retrying, in case an edit brings it back under.
@@ -234,10 +231,9 @@ export function useRecoverySnapshot(opts: RecoverySnapshotOptions): void {
 
   // A new document starts clean: whatever the load path wrote into the store is
   // the document as it arrived, not an edit to it.
-  const { projectId, scriptId } = opts;
   useEffect(() => {
     metadataDirtyRef.current = false;
-  }, [projectId, scriptId]);
+  }, []);
 
   /**
    * Say so, once, when this document cannot be protected.
@@ -254,17 +250,17 @@ export function useRecoverySnapshot(opts: RecoverySnapshotOptions): void {
       if (warnedRef.current) return;
       warnedRef.current = true;
       // Point at something that does work, rather than reporting a failure the
-      // writer can do nothing with. Saving to the library hands the document to
-      // auto-save, which has no such ceiling.
+      // writer can do nothing with. Saving to a file has no such
+      // ceiling.
       showToast(
         reason === 'too-large'
-          ? 'This document is too large to protect against a crash. Save it to your library so auto-save takes over.'
-          : 'Crash protection is unavailable — there is no room to store a recovery copy. Save your work to your library.',
+          ? 'This document is too large to protect against a crash. Save it to a file to keep your work safe.'
+          : 'Crash protection is unavailable (there is no room to store a recovery copy). Save your work to a file.',
         'error',
       );
     });
     return () => setRecoveryUnavailableHandler(null);
-  }, [projectId, scriptId]);
+  }, []);
 
   // Snapshot shortly after a change rather than up to ten seconds later.
   const { editor } = opts;

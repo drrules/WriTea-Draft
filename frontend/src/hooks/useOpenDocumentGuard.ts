@@ -25,8 +25,6 @@ import {
 } from '../services/openDocuments';
 
 export interface OpenDocumentGuardOptions {
-  projectId: string | null;
-  scriptId: string | null;
   /** Set when the document is a file being edited in place (issue #62). */
   originPath: string | null;
   documentTitle: string;
@@ -67,8 +65,8 @@ export interface OpenDocumentGuard {
 }
 
 export function useOpenDocumentGuard(opts: OpenDocumentGuardOptions): OpenDocumentGuard {
-  const { projectId, scriptId, originPath, documentTitle, ready } = opts;
-  const key = documentKey(projectId, scriptId, originPath);
+  const { originPath, documentTitle, ready } = opts;
+  const key = documentKey(null, null, originPath);
 
   const [prompt, setPrompt] = useState<Prompt | null>(null);
   /** Documents the writer has said to open a second copy of. */
