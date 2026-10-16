@@ -142,7 +142,6 @@ import VersionHistory from './VersionHistory';
 import AssetManager from './AssetManager';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useGoBack, useGoBackTo } from '../hooks/useGoBack';
-import { setPendingSaveFlush } from '../services/pendingSave';
 import OpenFile from './OpenFile';
 import type { OpenSource } from './OpenFile';
 import WelcomeDialog, { type WelcomeChoice } from './WelcomeDialog';
@@ -174,8 +173,7 @@ import { LiveProvider } from '../services/liveProvider';
 import LiveSessionDialog from './LiveSessionDialog';
 import { prosemirrorJSONToYXmlFragment } from 'y-prosemirror';
 import type { JSONContent as LiveJSONContent } from '@tiptap/core';
-import { isTauri, isDesktopTauri, needsSelectionHandles } from '../services/platform';
-import { reportSaveError } from '../stores/saveErrorStore';
+import { isDesktopTauri, needsSelectionHandles } from '../services/platform';
 import { pluginRegistry } from '../plugins/registry';
 import { createTrackChangesPlugin, trackChangesPluginKey } from '../editor/trackChanges';
 import { readStoredVersion } from '../services/scriptVersions';
@@ -1952,9 +1950,6 @@ const ScreenplayEditor: React.FC = () => {
   // the interval in Settings → Saving (issue #135).
   // A script saved to a file on disk (issue #135) follows this setting too —
   // see autoSaveAppliesToOpenDocument.
-  const autoSaveLibrary = useSettingsStore((s) => s.autoSaveLibrary);
-  const openScriptFile = useLinkedFileStore((s) => s.openScriptFile);
-  const scriptIsLinked = Boolean(openScriptFile && openScriptFile.scriptId === currentScriptId);
   const lastSavedJsonRef = useRef<string>('');
   // Tracks whether the script currently in the editor has real (textful) content
   // saved. When true, an auto-save that finds the editor body suddenly empty is
@@ -2213,112 +2208,12 @@ const ScreenplayEditor: React.FC = () => {
     return () => { editor.off('update', markUnsaved); };
   }, [editor, hasSaveTarget, isCollabGuest]);
 
-  // --- Keep a linked script and its file on disk in agreement (issue #135) ---
-  // The link belongs to one script; opening anything else drops it.
-  useEffect(() => {
-    const open = useLinkedFileStore.getState().openScriptFile;
-    if (open && open.scriptId !== currentScriptId) useLinkedFileStore.getState().setOpenScriptFile(null);
-  }, [currentScriptId]);
-
-  // The file may be edited elsewhere while the script is open — on another
-  // machine, in another app, by a sync client. Check again whenever the window
-  // comes back into focus, and whenever a save finds the file changed under
-  // it; load the file's version if nothing here is unsaved, and ask if both
-  // changed. Auto-save is held off while that happens, so it cannot write the
-  // editor's copy over the one the writer is choosing between.
-  const linkCheckRunningRef = useRef(false);
-  const recheckLinkedFile = useCallback(async () => {
-    if (!editor || !currentProject || !currentScriptId || !scriptIsLinked || isCollabGuest || collabMode) return;
-    if (linkCheckRunningRef.current || scriptSwitchingRef.current) return;
-    linkCheckRunningRef.current = true;
-    const pid = currentProject.id;
-    const sid = currentScriptId;
-    scriptSwitchingRef.current = true;
-    let reload = false;
-    let storedJson: string | null = null;
-    try {
-      const lf = await import('../services/linkedFiles');
-      const status = useEditorStore.getState().saveStatus;
-      const result = await lf.syncScriptWithFile(pid, sid, {
-        scriptTitle: useEditorStore.getState().documentTitle,
-        hasUnsavedEdits: status === 'unsaved' || status === 'error',
-        // Edits only on screen go into the library once the writer has
-        // answered: kept, they are what goes to the file; replaced, they are
-        // in the version recorded first.
-        saveUnsavedEdits: async () => {
-          const content = buildSaveContent();
-          if (!content) return;
-          await api.saveScript(pid, sid, { content, skipFileSync: true });
-          storedJson = JSON.stringify(content);
-        },
-      });
-      if (result.kind === 'loaded-from-file') {
-        // What the editor holds is now superseded by the file. Mark it as
-        // saved so nothing on the way to the reload writes it back.
-        const current = buildSaveContent();
-        if (current) lastSavedJsonRef.current = JSON.stringify(current);
-        useEditorStore.getState().setSaveStatus('idle');
-        showToast(`${lf.basenameOf(result.path)} was changed outside WriTea Draft — loaded that version.`, 'info');
-        reload = true;
-      } else if (result.kind === 'kept-library') {
-        // What was on screen is now in the library and the file. Edits typed
-        // while the question was open stay unsaved and go with the next save.
-        if (result.unsavedStored && storedJson !== null) {
-          lastSavedJsonRef.current = storedJson;
-          const now = buildSaveContent();
-          useEditorStore.getState().setSaveStatus(now && JSON.stringify(now) !== storedJson ? 'unsaved' : 'saved');
-        }
-        showToast(
-          result.preservedAs
-            ? `Kept WriTea Draft's version in ${lf.basenameOf(result.path)}. The other version was kept as ${lf.basenameOf(result.preservedAs)}.`
-            : `Kept WriTea Draft's version and saved it to ${lf.basenameOf(result.path)}.`,
-          'success',
-        );
-      }
-    } catch (err) {
-      console.error('[linked-files] re-check failed:', err);
-    } finally {
-      scriptSwitchingRef.current = false;
-      linkCheckRunningRef.current = false;
-    }
-    if (reload) {
-      if (urlProjectId === pid && urlScriptId === sid) useProjectStore.getState().triggerScriptReload();
-      else navigate(`/project/${pid}/edit/${sid}`, { replace: true });
-    }
-  }, [editor, currentProject, currentScriptId, scriptIsLinked, isCollabGuest, collabMode, buildSaveContent, urlProjectId, urlScriptId, navigate]);
-
-  useEffect(() => {
-    if (!scriptIsLinked || !currentScriptId) return;
-    const onFocus = () => { void recheckLinkedFile(); };
-    window.addEventListener('focus', onFocus);
-    // A save that found the file changed under it raises 'conflict' rather
-    // than overwrite it; that is the same question, asked now.
-    const sid = currentScriptId;
-    const unsub = useLinkedFileStore.subscribe((state, prev) => {
-      if (state.byScript[sid]?.state === 'conflict' && prev.byScript[sid]?.state !== 'conflict') {
-        void recheckLinkedFile();
-      }
-    });
-    return () => {
-      window.removeEventListener('focus', onFocus);
-      unsub();
-    };
-  }, [scriptIsLinked, currentScriptId, recheckLinkedFile]);
-
-  // --- Flush metadata-only changes to backend ---
+  // --- Mark the document unsaved when only its metadata changes ---
   // Store metadata (profiles, relationships, notes, etc.) can change without an
-  // editor document update.  The 30s auto-save would eventually persist them, but
-  // users expect "Save" to mean "saved" — a refresh within 30s would lose data.
-  // This effect watches key metadata fields and triggers a debounced save (2s).
-  // With auto-save off — or for a file opened in place, whose own auto-save
-  // runs from the menu bar — it only marks the document unsaved.
+  // editor document update, and Save should still know there is something new
+  // to write.
   useEffect(() => {
     if (!editor || !hasSaveTarget || isCollabGuest) return;
-    const pid = currentProject?.id ?? null;
-    const sid = currentScriptId;
-    const saveToLibrary = Boolean(pid && sid) && autoSaveLibrary;
-    let timer: ReturnType<typeof setTimeout> | null = null;
-
     const unsub = useEditorStore.subscribe((state, prev) => {
       // Only react to metadata field changes
       if (
@@ -2334,216 +2229,11 @@ const ScreenplayEditor: React.FC = () => {
         state.grammarCheckEnabled === prev.grammarCheckEnabled
       ) return;
       if (scriptSwitchingRef.current) return;
-      // Mark unsaved immediately
       const { saveStatus, setSaveStatus } = useEditorStore.getState();
       if (saveStatus === 'idle' || saveStatus === 'saved') setSaveStatus('unsaved');
-      if (!saveToLibrary || !pid || !sid) return;
-      // Debounce the actual save (2s)
-      if (timer) clearTimeout(timer);
-      timer = setTimeout(() => {
-        if (scriptSwitchingRef.current) return;
-        const content = buildSaveContent();
-        if (!content) return;
-        // Data-loss guard (see auto-save): don't overwrite real content with an
-        // empty/just-reset editor body.
-        if (!docHasAnyText(content) && lastSavedNonEmptyRef.current) {
-          console.warn('Metadata-save skipped: editor body is empty but saved content is not.');
-          return;
-        }
-        const json = JSON.stringify(content);
-        if (json !== lastSavedJsonRef.current) {
-          lastSavedJsonRef.current = json;
-          lastSavedNonEmptyRef.current = docHasAnyText(content);
-          useEditorStore.getState().setSaveStatus('saving');
-          scriptApi.saveScript(pid, sid, { content }).then(() => {
-            useEditorStore.getState().setSaveStatus('saved');
-          }).catch((err) => {
-            console.error('Metadata save failed:', err);
-            const msg = err instanceof Error ? err.message : String(err);
-            useEditorStore.getState().setSaveStatus('error', msg);
-            reportSaveError(err, 'metadata-save');
-          });
-        }
-      }, 2000);
     });
-
-    return () => { unsub(); if (timer) clearTimeout(timer); };
-  }, [editor, hasSaveTarget, currentProject, currentScriptId, buildSaveContent, isCollabGuest, autoSaveLibrary]);
-
-  // --- Persist project dictionary words when they change ---
-  // Words live on the Project entity (shared by every script in the project).
-  // Subscribe to spell-checker changes and write the new list back to the
-  // project via projectApi, debounced. Skipped for collab guests.
-  useEffect(() => {
-    if (!currentProject || isCollabGuest) return;
-    const pid = currentProject.id;
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    // Baseline: whatever the project currently believes its words are.
-    let lastSavedKey = JSON.stringify(
-      [...((currentProject.properties?.dictionary_words ?? []) as string[])].sort(),
-    );
-    const unsub = spellChecker.onChange(() => {
-      const words = spellChecker.getProjectWords();
-      const key = JSON.stringify(words);
-      if (key === lastSavedKey) return;
-      if (timer) clearTimeout(timer);
-      timer = setTimeout(async () => {
-        try {
-          const proj = useProjectStore.getState().currentProject;
-          if (!proj || proj.id !== pid) return;
-          const updated = await projectApi.updateProject(pid, {
-            properties: { ...proj.properties, dictionary_words: words } as any,
-          });
-          setCurrentProject(updated);
-          lastSavedKey = key;
-        } catch (err) {
-          console.warn('Failed to persist project dictionary words', err);
-        }
-      }, 800);
-    });
-    return () => { unsub(); if (timer) clearTimeout(timer); };
-  }, [currentProject, isCollabGuest, setCurrentProject]);
-
-  // --- Save on page unload (refresh / close) ---
-  // Two strategies depending on platform:
-  //   1. Tauri desktop / mobile — register a `onCloseRequested` handler that
-  //      preventDefault()s the close, awaits the SQLite save, and only then
-  //      closes the window.  Plain `beforeunload` is unreliable on WebView2
-  //      (Windows): the renderer is torn down before the async IPC save
-  //      completes, so the last unsaved edits are silently lost.
-  //   2. Web — `beforeunload` is the only hook available.  We fire the save
-  //      and, if there are unsaved changes, also set returnValue so the
-  //      browser shows its standard "Leave this page?" prompt.  That gives
-  //      the in-flight save a few extra milliseconds before the tab dies.
-  //
-  // NOTE: We intentionally do NOT save on component unmount because the
-  // editor may already be destroyed at that point, and editor.getJSON()
-  // would return an empty doc, overwriting the saved file with blank content.
-  useEffect(() => {
-    if (!editor || !currentProject || !currentScriptId || isCollabGuest) return;
-    const pid = currentProject.id;
-    const sid = currentScriptId;
-
-    // Auto-save off: nothing is written on the way out. The desktop close
-    // button is asked about by the menu bar, leaving for another screen by the
-    // leave guard; all that is left here is the browser's own "Leave page?"
-    // for a tab with unsaved changes.
-    if (!autoSaveLibrary) {
-      const promptBeforeUnload = (event: BeforeUnloadEvent) => {
-        if (editor.isDestroyed) return;
-        const status = useEditorStore.getState().saveStatus;
-        if (status !== 'unsaved' && status !== 'error') return;
-        event.preventDefault();
-        event.returnValue = '';
-      };
-      window.addEventListener('beforeunload', promptBeforeUnload);
-      return () => window.removeEventListener('beforeunload', promptBeforeUnload);
-    }
-
-    // The timed auto-save's data-loss guard, for the saves on the way out: an
-    // empty body never goes over a script that has text saved. An editor reset
-    // while still bound to a script would otherwise be written over it by
-    // closing the tab or leaving the screen.
-    const blankOverSaved = (content: Record<string, unknown>): boolean => {
-      if (docHasAnyText(content) || !lastSavedNonEmptyRef.current) return false;
-      console.warn('Save on leaving skipped: editor body is empty but saved content is not.');
-      return true;
-    };
-
-    const flushPendingSave = async (): Promise<void> => {
-      if (editor.isDestroyed) return;
-      const content = buildSaveContent();
-      if (!content || blankOverSaved(content)) return;
-      const json = JSON.stringify(content);
-      if (json === lastSavedJsonRef.current) return;
-      lastSavedJsonRef.current = json;
-      try {
-        await scriptApi.saveScript(pid, sid, { content });
-      } catch (err) {
-        // Bubble through console — the close handler decides what to do
-        // about persistence failures (it falls back to confirm()).
-        console.error('Save-on-close failed:', err);
-        throw err;
-      }
-    };
-
-    // ── Tauri path ────────────────────────────────────────────────────────
-    let unlistenCloseRequested: (() => void) | null = null;
-    let cancelled = false;
-
-    if (isTauri()) {
-      (async () => {
-        try {
-          const { getCurrentWebviewWindow } = await import(
-            '@tauri-apps/api/webviewWindow'
-          );
-          const win = getCurrentWebviewWindow();
-          const unlisten = await win.onCloseRequested(async (event) => {
-            if (editor.isDestroyed) return;
-            const content = buildSaveContent();
-            if (!content || blankOverSaved(content)) return;
-            const json = JSON.stringify(content);
-            if (json === lastSavedJsonRef.current) return;
-            // We have unsaved edits.  Block the close, run the save, then
-            // close programmatically.  If the save fails, ask the user
-            // before discarding their work.
-            event.preventDefault();
-            try {
-              await flushPendingSave();
-              await win.destroy();
-            } catch (err) {
-              const msg = err instanceof Error ? err.message : String(err);
-              const proceed = window.confirm(
-                `Could not save your latest changes:\n\n${msg}\n\n` +
-                  'Close anyway and lose those changes?',
-              );
-              if (proceed) await win.destroy();
-            }
-          });
-          if (cancelled) unlisten();
-          else unlistenCloseRequested = unlisten;
-        } catch (err) {
-          console.error('Failed to register onCloseRequested handler:', err);
-        }
-      })();
-    }
-
-    // ── Web path (and a defensive fallback for Tauri) ─────────────────────
-    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
-      if (editor.isDestroyed) return;
-      const content = buildSaveContent();
-      if (!content || blankOverSaved(content)) return;
-      const json = JSON.stringify(content);
-      if (json === lastSavedJsonRef.current) return;
-      lastSavedJsonRef.current = json;
-      // Fire-and-forget save.  The browser will give the request a brief
-      // grace window before terminating the tab.  If the user cancels the
-      // unload (returnValue prompt below), they'll still be in the editor
-      // and need to know the save failed — so push it to the modal store.
-      scriptApi.saveScript(pid, sid, { content }).catch((err) => {
-        console.error('Save-on-unload failed:', err);
-        reportSaveError(err, 'save-on-close');
-      });
-      // Trigger the browser's native confirm prompt so the user gets a
-      // chance to abort the close while the save is still in flight.
-      event.preventDefault();
-      event.returnValue = '';
-    };
-    window.addEventListener('beforeunload', handleBeforeUnload);
-
-    // ── Router path ───────────────────────────────────────────────────────
-    // Neither hook above fires when the app navigates to another screen of
-    // its own, so hand the same flush to whatever is doing the navigating
-    // (issue #65). Unregistered below, so a destroyed editor is never asked.
-    const unregisterFlush = setPendingSaveFlush(flushPendingSave);
-
-    return () => {
-      cancelled = true;
-      if (unlistenCloseRequested) unlistenCloseRequested();
-      window.removeEventListener('beforeunload', handleBeforeUnload);
-      unregisterFlush();
-    };
-  }, [editor, currentProject, currentScriptId, buildSaveContent, isCollabGuest, autoSaveLibrary]);
+    return () => { unsub(); };
+  }, [editor, hasSaveTarget, isCollabGuest]);
 
   // --- Keep the open document across route changes ---
   // Going to Settings (or any other route) unmounts this component and destroys
